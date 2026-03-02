@@ -1,326 +1,69 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>何鑫/薪昌 調度管理系統</title>
-    <!-- 使用 Tailwind CSS CDN -->
+    <title>何鑫 / 薪昌 调度管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用 Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
-        body {
-            font-family: 'Noto Sans TC', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        /* 自定義捲軸樣式 */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #020617;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #fbbf24;
-            border-radius: 10px;
-        }
+        body { background-color: #0d1117; } /* 深色背景 */
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
+<body class="flex items-center justify-center min-h-screen p-4">
 
-    <!-- React 依賴 -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden" style="border-top: 10px solid #fbbf24;">
+        
+        <div class="text-center pt-8 pb-4">
+            <div class="bg-slate-900 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <span class="text-4xl text-yellow-500">🚚</span>
+            </div>
+            <h1 class="text-2xl font-bold text-slate-800">何鑫 / 薪昌</h1>
+            <p class="text-slate-400 text-sm tracking-widest mt-1">調度管理系統 v2.0</p>
+        </div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        <div class="px-6 py-4">
+            <div class="flex items-center justify-center mb-4">
+                <div class="h-px bg-slate-200 flex-grow"></div>
+                <span class="px-3 text-xs text-slate-400 font-medium">辦公室人員</span>
+                <div class="h-px bg-slate-200 flex-grow"></div>
+            </div>
 
-        const App = () => {
-            // 基礎資料設定
-            const [driversList] = useState(['陳師傅', '王小明', '李大華', '張三', '外車-林先生']);
-            const [officeStaff] = useState(['廠務部-小周', '倉管部-老李', '採購部-馬先生', '系統管理員']);
-            const [unitOptions] = useState(['件', '組', '公斤', '米', '箱', '自定義...']);
-            
-            const [currentUser, setCurrentUser] = useState(null);
-            const [internalNotify, setInternalNotify] = useState(null);
-            const [showModal, setShowModal] = useState(false);
-            const [showDriverSelect, setShowDriverSelect] = useState(false);
-            const [currentActionBatchId, setCurrentActionBatchId] = useState(null);
-            const [showLoginTaskModal, setShowLoginTaskModal] = useState(false);
+            <div class="space-y-3">
+                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
+                    <span class="font-bold text-slate-700">廠務部-小周</span>
+                    <span class="text-slate-400">→</span>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
+                    <span class="font-bold text-slate-700">倉管部-老李</span>
+                    <span class="text-slate-400">→</span>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
+                    <span class="font-bold text-slate-700">採購部-馬先生</span>
+                    <span class="text-slate-400">→</span>
+                </a>
+                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
+                    <span class="font-bold text-slate-700">系統管理員</span>
+                    <span class="text-slate-400">→</span>
+                </a>
+            </div>
+        </div>
 
-            // 單據資料庫
-            const [batches, setBatches] = useState([
-                { 
-                    id: 'b1', 
-                    date: '2024-02-06',
-                    vendor: '振興金屬加工',
-                    creatorDept: '廠務部',
-                    status: '待外送加工',
-                    driver: '', 
-                    items: [{ id: 201, name: '不鏽鋼底座', quantity: 50, unit: '件', note: 'A機台專用' }],
-                    isRead: false,
-                    officeIsRead: true,
-                    purchaseConfirmed: false,
-                    factoryAssigned: false 
-                }
-            ]);
+        <div class="px-6 py-4 pb-10">
+            <div class="flex items-center justify-center mb-4">
+                <div class="h-px bg-slate-200 flex-grow"></div>
+                <span class="px-3 text-xs text-slate-400 font-medium">外勤師傅</span>
+                <div class="h-px bg-slate-200 flex-grow"></div>
+            </div>
 
-            // 新單據暫存
-            const [newBatchItems, setNewBatchItems] = useState([
-                { id: Date.now(), name: '', quantity: 1, unit: '件', isCustomUnit: false, note: '' }
-            ]);
+            <div class="grid grid-cols-2 gap-3">
+                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">陳師傅</button>
+                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">王小明</button>
+                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">李大華</button>
+                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">張三</button>
+                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition col-span-1">外車-林先生</button>
+            </div>
+        </div>
 
-            // 權限判斷
-            const isOfficeUser = useMemo(() => officeStaff.includes(currentUser) || currentUser === '系統管理員', [currentUser]);
-            const isFactoryDept = useMemo(() => currentUser?.includes('廠務部') || currentUser === '系統管理員', [currentUser]);
-            const isPurchaseDept = useMemo(() => currentUser?.includes('採購部') || currentUser === '系統管理員', [currentUser]);
-            const isWarehouseDept = useMemo(() => currentUser?.includes('倉管部') || currentUser === '系統管理員', [currentUser]);
-
-            // 核心權限更改：採購及廠務皆可建立新單據
-            const canCreateTicket = useMemo(() => isFactoryDept || isPurchaseDept || currentUser === '系統管理員', [isFactoryDept, isPurchaseDept, currentUser]);
-
-            // 自動觸發 Lucide 圖示渲染
-            useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            });
-
-            // 狀態更新函數
-            const handleUpdateStatus = (id, newStatus, driver = null) => {
-                setBatches(prev => prev.map(b => {
-                    if (b.id === id) {
-                        let updated = { ...b };
-                        if (driver) {
-                            updated.driver = driver;
-                            updated.factoryAssigned = true;
-                            updated.isRead = false;
-                            setInternalNotify({ title: "調度完成", message: `已指派 ${driver} 負責此任務` });
-                        } else if (newStatus) {
-                            updated.status = newStatus;
-                            if (newStatus === '加工中') updated.factoryAssigned = true;
-                            if (newStatus === '待載回公司') { updated.factoryAssigned = false; updated.driver = ''; }
-                            if (newStatus === '待入庫') updated.officeIsRead = false;
-                            if (newStatus === '已入庫') updated.officeIsRead = true;
-                        }
-                        return updated;
-                    }
-                    return b;
-                }));
-                setShowDriverSelect(false);
-            };
-
-            // 登入介面
-            if (!currentUser) {
-                return (
-                    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-                        <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-[0_0_50px_rgba(251,191,36,0.15)] text-center border-t-8 border-amber-400">
-                            <div className="bg-slate-900 w-24 h-24 rounded-3xl flex items-center justify-center text-amber-400 mx-auto mb-6 shadow-xl rotate-3">
-                                <i data-lucide="truck" class="w-12 h-12"></i>
-                            </div>
-                            <h1 className="text-3xl font-black text-slate-900 tracking-tighter">何鑫 <span className="text-amber-500">/</span> 薪昌</h1>
-                            <p className="text-slate-400 font-bold mt-1 mb-10 text-sm">調度管理系統 v2.0</p>
-                            
-                            <div className="space-y-8 text-left">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-4 px-2">
-                                        <div className="h-px flex-1 bg-slate-100"></div>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">辦公室人員</p>
-                                        <div className="h-px flex-1 bg-slate-100"></div>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {officeStaff.map(u => (
-                                            <button key={u} onClick={() => setCurrentUser(u)} className="w-full text-left p-4 rounded-2xl bg-slate-50 hover:bg-amber-400 hover:text-slate-950 border border-slate-100 font-black flex justify-between items-center group transition-all">
-                                                {u} <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1"></i>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2 mb-4 px-2">
-                                        <div className="h-px flex-1 bg-slate-100"></div>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">外勤師傅</p>
-                                        <div className="h-px flex-1 bg-slate-100"></div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {driversList.map(u => (
-                                            <button key={u} onClick={() => setCurrentUser(u)} className="w-full text-left p-4 rounded-2xl bg-slate-900 text-white hover:bg-amber-400 hover:text-slate-950 font-black text-sm transition-all text-center">
-                                                {u}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            return (
-                <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-                    
-                    {/* 頂部導覽列 */}
-                    <div className="max-w-6xl mx-auto mb-6 flex justify-between items-center bg-slate-950 p-5 rounded-[2rem] shadow-xl border-b-4 border-amber-400">
-                        <div className="flex items-center gap-4 text-white">
-                            <div className="bg-amber-400 p-2.5 rounded-xl text-slate-950 shadow-inner"><i data-lucide="user" class="w-5 h-5"></i></div>
-                            <div>
-                                <p className="text-[10px] font-black text-amber-400/60 uppercase leading-none mb-1">USER STATUS</p>
-                                <p className="font-black text-white">{currentUser}</p>
-                            </div>
-                        </div>
-                        <button onClick={() => setCurrentUser(null)} className="text-white font-black hover:text-amber-400 flex items-center gap-2 bg-slate-900 px-5 py-2.5 rounded-xl transition-all border border-slate-800">
-                            <i data-lucide="log-out" class="w-4 h-4"></i> 登出
-                        </button>
-                    </div>
-
-                    {/* 標題與建立按鈕 */}
-                    <header className="max-w-6xl mx-auto mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                            <div className="p-3 bg-slate-950 rounded-2xl text-amber-400 shadow-lg"><i data-lucide="truck" class="w-8 h-8"></i></div>
-                            調度管理系統
-                        </h1>
-                        {canCreateTicket && (
-                            <button onClick={() => setShowModal(true)} className="bg-amber-400 text-slate-950 font-black px-10 py-5 rounded-3xl flex items-center gap-3 shadow-[0_10px_20px_rgba(251,191,36,0.3)] border-b-4 border-amber-600 hover:scale-[1.02] active:scale-[0.98] transition-all text-lg">
-                                <i data-lucide="plus" class="w-6 h-6"></i> 建立新單據
-                            </button>
-                        )}
-                    </header>
-
-                    {/* 主清單 */}
-                    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 pb-40">
-                        {batches.map(batch => (
-                            <div key={batch.id} className="bg-white rounded-[3rem] shadow-xl border border-slate-200 overflow-hidden relative transition-transform hover:shadow-2xl">
-                                <div className={`absolute top-0 right-0 px-8 py-2 rounded-bl-[2rem] font-black text-[11px] uppercase tracking-widest ${(!batch.driver) ? 'bg-amber-400 text-slate-900' : 'bg-slate-900 text-white'}`}>
-                                    {(!batch.driver) ? '待調度' : batch.status}
-                                </div>
-                                <div className="p-8">
-                                    <div className="mb-6">
-                                        <h3 className="text-2xl font-black text-slate-900 mb-1">{batch.vendor}</h3>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-slate-400 text-xs font-bold bg-slate-50 px-3 py-1 rounded-full flex items-center gap-1.5"><i data-lucide="calendar" class="w-3 h-3"></i> {batch.date}</span>
-                                            <span className="text-slate-400 text-xs font-bold bg-slate-50 px-3 py-1 rounded-full flex items-center gap-1.5"><i data-lucide="shield-check" class="w-3 h-3"></i> {batch.creatorDept}</span>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3 mb-8">
-                                        {batch.items.map(item => (
-                                            <div key={item.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                                                <div>
-                                                    <p className="font-black text-slate-800">{item.name}</p>
-                                                    {item.note && <p className="text-[10px] text-slate-400">備註：{item.note}</p>}
-                                                </div>
-                                                <div className="bg-slate-900 text-amber-400 px-3 py-1 rounded-lg font-black text-sm">{item.quantity} {item.unit}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {/* 按鈕邏輯 */}
-                                    {(!batch.driver) ? (
-                                        <button 
-                                            disabled={!isFactoryDept}
-                                            onClick={() => { setCurrentActionBatchId(batch.id); setShowDriverSelect(true); }}
-                                            className={`w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all ${isFactoryDept ? 'bg-slate-950 text-amber-400 hover:bg-slate-800' : 'bg-slate-100 text-slate-300'}`}
-                                        >
-                                            {isFactoryDept ? <><i data-lucide="user-plus" class="w-5 h-5"></i> 指派司傅</> : '等待廠務調度'}
-                                        </button>
-                                    ) : (
-                                        <div className="text-center p-4 bg-slate-50 rounded-2xl text-slate-400 font-bold text-sm">
-                                            司傅：{batch.driver} | 狀態：{batch.status}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* 指派師傅 Modal */}
-                    {showDriverSelect && (
-                        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[2.5rem] w-full max-w-xs p-8 shadow-2xl border-t-8 border-slate-950 text-center">
-                                <h3 className="text-xl font-black mb-6">指派司傅</h3>
-                                <div className="space-y-2">
-                                    {driversList.map(name => (
-                                        <button key={name} onClick={() => handleUpdateStatus(currentActionBatchId, null, name)} className="w-full p-4 rounded-2xl bg-slate-50 hover:bg-amber-400 hover:text-slate-950 font-black border border-slate-100 transition-all text-left flex justify-between items-center">
-                                            {name} <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                                        </button>
-                                    ))}
-                                </div>
-                                <button onClick={() => setShowDriverSelect(false)} className="mt-6 text-slate-400 font-bold hover:text-red-500">取消</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 建立單據 Modal */}
-                    {showModal && (
-                        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4 z-[450]">
-                            <div className="bg-white rounded-[3rem] w-full max-w-2xl p-8 shadow-2xl max-h-[90vh] overflow-y-auto border-t-[12px] border-amber-400">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter">發布新任務</h2>
-                                    <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all"><i data-lucide="x" class="w-8 h-8"></i></button>
-                                </div>
-                                
-                                <div className="space-y-8">
-                                    <div className="bg-slate-900 p-6 rounded-[2rem]">
-                                        <label className="text-[10px] font-black text-amber-400 uppercase mb-2 block tracking-widest">Processing Vendor / 加工廠商</label>
-                                        <input id="newVendor" className="w-full bg-slate-800 text-white p-4 rounded-xl font-black outline-none border-2 border-slate-700 focus:border-amber-400" placeholder="請輸入廠商名稱" />
-                                    </div>
-                                    
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center">
-                                            <p className="text-[10px] font-black text-slate-400 tracking-widest uppercase">Item / 品項清單</p>
-                                        </div>
-                                        <div className="bg-slate-50 p-6 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                            <input id="itemName" className="w-full bg-white p-4 rounded-xl font-black outline-none mb-4 border border-slate-100" placeholder="品項名稱" />
-                                            <div className="flex gap-4">
-                                                <input id="itemQty" type="number" defaultValue="1" className="w-1/2 bg-white p-4 rounded-xl font-black outline-none border border-slate-100" />
-                                                <select id="itemUnit" className="w-1/2 bg-white p-4 rounded-xl font-black outline-none border border-slate-100">
-                                                    {unitOptions.map(u => <option key={u}>{u}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <button onClick={() => {
-                                        const vendor = document.getElementById('newVendor').value;
-                                        const name = document.getElementById('itemName').value;
-                                        if(!vendor || !name) return;
-                                        const newBatch = {
-                                            id: 'b' + Date.now(),
-                                            date: new Date().toISOString().split('T')[0],
-                                            vendor,
-                                            creatorDept: currentUser,
-                                            status: '待外送加工',
-                                            driver: '',
-                                            items: [{ id: Date.now(), name, quantity: document.getElementById('itemQty').value, unit: document.getElementById('itemUnit').value }],
-                                            isRead: false
-                                        };
-                                        setBatches([newBatch, ...batches]);
-                                        setShowModal(false);
-                                        setInternalNotify({ title: "單據已建立", message: "請等待調度指派司傅。" });
-                                    }} className="w-full bg-slate-950 text-amber-400 py-6 rounded-[2rem] font-black text-xl border-b-8 border-black shadow-2xl">確認發布單據</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 通知 */}
-                    {internalNotify && (
-                        <div className="fixed bottom-8 right-8 z-[600] w-72 bg-slate-950 text-white p-6 rounded-[2rem] shadow-2xl border-l-8 border-amber-400">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="font-black text-amber-400">{internalNotify.title}</span>
-                                <button onClick={() => setInternalNotify(null)}><i data-lucide="x" class="w-4 h-4"></i></button>
-                            </div>
-                            <p className="text-xs text-slate-400 font-bold">{internalNotify.message}</p>
-                        </div>
-                    )}
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+    </div>
 </body>
 </html>
