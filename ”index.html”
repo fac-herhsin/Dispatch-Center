@@ -1,69 +1,65 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>何鑫 / 薪昌 调度管理系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>公司內部物件調度系統</title>
     <style>
-        body { background-color: #0d1117; } /* 深色背景 */
+        body { font-family: sans-serif; background-color: #f4f7f6; margin: 20px; }
+        h2 { color: #333; text-align: center; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: center; }
+        th { background-color: #007bff; color: white; }
+        
+        /* 狀態標籤顏色 */
+        .status { padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.9em; }
+        .status-wait { background-color: #ffc107; color: black; } /* 待加工 */
+        .status-done { background-color: #17a2b8; color: white; } /* 已完成 */
+        .status-shipping { background-color: #28a745; color: white; } /* 可載回 */
+        .status-stored { background-color: #6c757d; color: white; } /* 已入庫 */
+        
+        .btn { padding: 6px 12px; cursor: pointer; border: none; border-radius: 4px; background: #007bff; color: white; transition: 0.3s; }
+        .btn:hover { background: #0056b3; }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body>
 
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden" style="border-top: 10px solid #fbbf24;">
-        
-        <div class="text-center pt-8 pb-4">
-            <div class="bg-slate-900 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <span class="text-4xl text-yellow-500">🚚</span>
-            </div>
-            <h1 class="text-2xl font-bold text-slate-800">何鑫 / 薪昌</h1>
-            <p class="text-slate-400 text-sm tracking-widest mt-1">調度管理系統 v2.0</p>
-        </div>
+    <h2>📦 物件加工調度追蹤表</h2>
 
-        <div class="px-6 py-4">
-            <div class="flex items-center justify-center mb-4">
-                <div class="h-px bg-slate-200 flex-grow"></div>
-                <span class="px-3 text-xs text-slate-400 font-medium">辦公室人員</span>
-                <div class="h-px bg-slate-200 flex-grow"></div>
-            </div>
+    <table>
+        <thead>
+            <tr>
+                <th>物件編號</th>
+                <th>物件名稱</th>
+                <th>負責部門</th>
+                <th>目前狀態</th>
+                <th>操作面板 (模擬)</th>
+            </tr>
+        </thead>
+        <tbody id="task-list">
+            <tr>
+                <td>#A001</td>
+                <td>不鏽鋼支架</td>
+                <td>廠務部</td>
+                <td><span class="status status-wait">待送加工</span></td>
+                <td><button class="btn" onclick="alert('狀態已更新為：已完成加工')">更新進度</button></td>
+            </tr>
+            <tr>
+                <td>#A002</td>
+                <td>精密齒輪</td>
+                <td>採購部</td>
+                <td><span class="status status-done">加工完成</span></td>
+                <td><button class="btn">通知載回</button></td>
+            </tr>
+            <tr>
+                <td>#A003</td>
+                <td>鋁合金外殼</td>
+                <td>倉管部</td>
+                <td><span class="status status-shipping">可載回公司</span></td>
+                <td><button class="btn">確認入庫</button></td>
+            </tr>
+        </tbody>
+    </table>
 
-            <div class="space-y-3">
-                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
-                    <span class="font-bold text-slate-700">廠務部-小周</span>
-                    <span class="text-slate-400">→</span>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
-                    <span class="font-bold text-slate-700">倉管部-老李</span>
-                    <span class="text-slate-400">→</span>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
-                    <span class="font-bold text-slate-700">採購部-馬先生</span>
-                    <span class="text-slate-400">→</span>
-                </a>
-                <a href="#" class="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl hover:bg-slate-100 transition shadow-sm">
-                    <span class="font-bold text-slate-700">系統管理員</span>
-                    <span class="text-slate-400">→</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="px-6 py-4 pb-10">
-            <div class="flex items-center justify-center mb-4">
-                <div class="h-px bg-slate-200 flex-grow"></div>
-                <span class="px-3 text-xs text-slate-400 font-medium">外勤師傅</span>
-                <div class="h-px bg-slate-200 flex-grow"></div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">陳師傅</button>
-                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">王小明</button>
-                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">李大華</button>
-                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">張三</button>
-                <button class="bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition col-span-1">外車-林先生</button>
-            </div>
-        </div>
-
-    </div>
 </body>
 </html>
