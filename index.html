@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業調度管理系統</title>
+    <title>企業調度管理系統 - 雲端同步版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -15,95 +15,122 @@
         .card-bg {
             background-color: #1e293b;
         }
-        .btn-primary {
-            background-color: #f59e0b;
-            color: #000;
-        }
-        .btn-primary:hover {
-            background-color: #fbbf24;
-        }
-        .nav-active {
-            border-bottom: 2px solid #f59e0b;
-        }
         .status-badge {
             padding: 2px 8px;
             border-radius: 4px;
             font-size: 0.8rem;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            body { background-color: white !important; color: black !important; }
+            .card-bg { background-color: white !important; border: 1px solid #ccc !important; color: black !important; }
+            .print-area { display: block !important; }
         }
     </style>
 </head>
 <body class="min-h-screen">
 
     <div id="app">
-        <!-- 頁面內容將由 JavaScript 動態渲染 -->
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4 text-orange-500"></i>
+                <p>雲端系統同步中...</p>
+            </div>
+        </div>
     </div>
 
-    <script>
-        // 初始化資料 (模擬資料庫)
-        if (!localStorage.getItem('orders')) {
-            localStorage.setItem('orders', JSON.stringify([]));
-        }
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase 設定由環境變數注入
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         let state = {
-            currentRole: 'portal', // portal, purchase, logistics, warehouse, admin
-            orders: JSON.parse(localStorage.getItem('orders')),
-            view: 'dashboard' // dashboard, newTask
+            currentRole: 'portal',
+            orders: [],
+            view: 'dashboard',
+            user: null
         };
 
-        // 更新儲存空間並重新渲染
-        function updateState(newState) {
-            state = { ...state, ...newState };
-            localStorage.setItem('orders', JSON.stringify(state.orders));
+        // --- 初始化身份驗證 (Rule 3) ---
+        async function initAuth() {
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth Error", error);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            state.user = user;
+            if (user) {
+                startSync();
+            }
             render();
-        }
+        });
 
-        // --- 功能函數 ---
-        
-        function addOrder(orderData) {
-            const newOrder = {
-                id: 'DEL-' + Date.now(),
-                ...orderData,
-                status: '待執行', // 初始狀態
-                createdAt: new Date().toLocaleString()
-            };
-            const updatedOrders = [...state.orders, newOrder];
-            updateState({ orders: updatedOrders, view: 'dashboard' });
-        }
-
-        function changeStatus(orderId, newStatus) {
-            const updatedOrders = state.orders.map(order => {
-                if (order.id === orderId) {
-                    return { ...order, status: newStatus };
-                }
-                return order;
+        // --- 雲端即時同步 (Rule 1 & 2) ---
+        function startSync() {
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+            // 使用簡單查詢以避免索引問題 (Rule 2)
+            onSnapshot(colRef, (snapshot) => {
+                const orders = [];
+                snapshot.forEach((doc) => {
+                    orders.push({ id: doc.id, ...doc.data() });
+                });
+                state.orders = orders;
+                render();
+            }, (error) => {
+                console.error("Sync Error", error);
             });
-            updateState({ orders: updatedOrders });
         }
 
-        function deleteOrder(orderId) {
-            const updatedOrders = state.orders.filter(order => order.id !== orderId);
-            updateState({ orders: updatedOrders });
-        }
+        // --- 資料操作功能 ---
+        window.addOrder = async (orderData) => {
+            if (!state.user) return;
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+            await addDoc(colRef, {
+                ...orderData,
+                status: '待執行',
+                createdAt: new Date().toLocaleString(),
+                timestamp: Date.now()
+            });
+            state.view = 'dashboard';
+            render();
+        };
 
-        // --- 視圖組件 ---
+        window.changeStatus = async (docId, newStatus) => {
+            if (!state.user) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
+            await updateDoc(docRef, { status: newStatus });
+        };
 
+        window.deleteOrder = async (docId) => {
+            if (!state.user) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
+            await deleteDoc(docRef);
+        };
+
+        // --- UI 組件 ---
         function Navbar() {
-            const roleLabels = {
-                purchase: '採購部',
-                logistics: '廠務部',
-                warehouse: '倉管部',
-                admin: '管理員'
-            };
+            const roleLabels = { purchase: '採購部', logistics: '廠務部', warehouse: '倉管部', admin: '管理員' };
             return `
-                <nav class="flex items-center justify-between px-8 py-4 border-b border-gray-700 bg-slate-900 sticky top-0 z-10">
-                    <div class="flex items-center gap-2 cursor-pointer" onclick="updateState({currentRole: 'portal'})">
+                <nav class="no-print flex items-center justify-between px-8 py-4 border-b border-gray-700 bg-slate-900 sticky top-0 z-10">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="window.updateView({currentRole: 'portal'})">
                         <span class="text-xl font-bold tracking-wider">調度系統</span>
                         <span class="bg-orange-500 text-black text-xs px-2 py-0.5 rounded font-bold">${roleLabels[state.currentRole]}</span>
                     </div>
                     <div class="flex gap-6 items-center">
-                        <button onclick="updateState({view: 'dashboard'})" class="${state.view === 'dashboard' ? 'text-orange-400 font-bold' : ''}">看板</button>
-                        ${state.currentRole === 'purchase' ? `<button onclick="updateState({view: 'newTask'})" class="bg-orange-500 text-black px-4 py-1.5 rounded-md font-bold hover:bg-orange-400 transition">新增單據</button>` : ''}
-                        <button onclick="updateState({currentRole: 'portal'})" class="text-gray-400 hover:text-white">登出</button>
+                        <button onclick="window.updateView({view: 'dashboard'})" class="${state.view === 'dashboard' ? 'text-orange-400 font-bold' : ''}">看板</button>
+                        ${state.currentRole === 'purchase' ? `<button onclick="window.updateView({view: 'newTask'})" class="bg-orange-500 text-black px-4 py-1.5 rounded-md font-bold hover:bg-orange-400 transition">新增單據</button>` : ''}
+                        <button onclick="window.updateView({currentRole: 'portal'})" class="text-gray-400 hover:text-white">登出</button>
                     </div>
                 </nav>
             `;
@@ -112,8 +139,8 @@
         function PortalView() {
             return `
                 <div class="flex flex-col items-center justify-center min-h-screen p-4">
-                    <h1 class="text-4xl font-bold mb-2">企業調度管理系統</h1>
-                    <p class="text-orange-400 mb-12">雲端連線成功，請選擇部門</p>
+                    <h1 class="text-4xl font-bold mb-2 tracking-tight">企業調度管理系統</h1>
+                    <p class="text-orange-400 mb-12 font-medium"><i class="fas fa-cloud mr-2"></i>雲端同步已就緒</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
                         ${RoleCard('admin', 'fa-user-shield', '管理員')}
                         ${RoleCard('purchase', 'fa-shopping-cart', '採購部')}
@@ -126,8 +153,8 @@
 
         function RoleCard(role, icon, label) {
             return `
-                <div onclick="updateState({currentRole: '${role}', view: 'dashboard'})" 
-                     class="card-bg border-2 border-transparent hover:border-orange-500 cursor-pointer p-10 rounded-2xl flex flex-col items-center justify-center transition-all transform hover:-translate-y-1">
+                <div onclick="window.updateView({currentRole: '${role}', view: 'dashboard'})" 
+                     class="card-bg border-2 border-transparent hover:border-orange-500 cursor-pointer p-10 rounded-2xl flex flex-col items-center justify-center transition-all transform hover:-translate-y-1 shadow-xl">
                     <i class="fas ${icon} text-4xl mb-4 ${role === 'admin' ? 'text-orange-400' : 'text-blue-400'}"></i>
                     <span class="text-xl font-bold">${label}</span>
                 </div>
@@ -138,138 +165,153 @@
             return `
                 ${Navbar()}
                 <div class="max-w-2xl mx-auto mt-12 p-8 bg-white rounded-3xl text-gray-900 shadow-2xl">
-                    <h2 class="text-2xl font-bold mb-6">新增調度任務</h2>
+                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-2"><i class="fas fa-plus-circle text-orange-500"></i> 新增調度任務</h2>
                     <form id="taskForm" onsubmit="handleTaskSubmit(event)">
                         <div class="mb-4">
                             <label class="block text-sm font-bold mb-1">任務類別</label>
-                            <select id="type" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <select id="type" class="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-500">
                                 <option value="加工品">加工件 (需載回)</option>
                                 <option value="備品銷售">備品銷售 (直送客戶)</option>
                             </select>
                         </div>
                         <div class="mb-4">
                             <label class="block text-sm font-bold mb-1">對象名稱</label>
-                            <input id="target" required placeholder="對象名稱 (工廠或客戶)" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
-                        </div>
-                        <div class="mb-2">
-                            <label class="block text-sm font-bold mb-1">品項明細</label>
+                            <input id="target" required placeholder="例如：某某加工廠 或 某某客戶" class="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-500">
                         </div>
                         <div id="itemsContainer" class="mb-4 space-y-2">
+                            <label class="block text-sm font-bold mb-1">品項明細</label>
                             <div class="flex gap-2">
                                 <input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
                                 <input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required>
                                 <input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>
                             </div>
                         </div>
-                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block hover:text-blue-800 transition">+ 增加品項</button>
-                        <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition">送出並儲存</button>
+                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block hover:underline">+ 增加品項</button>
+                        <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition shadow-lg">發布任務至雲端</button>
                     </form>
                 </div>
             `;
         }
 
         function DashboardView() {
-            let displayOrders = state.orders;
-
+            const sortedOrders = [...state.orders].sort((a, b) => b.timestamp - a.timestamp);
             return `
                 ${Navbar()}
                 <div class="p-8 max-w-7xl mx-auto">
-                    <div class="flex justify-between items-center mb-8">
-                        <h2 class="text-2xl font-bold">全廠調度看板 (${displayOrders.length})</h2>
-                        <div class="text-sm text-gray-400">目前身分：${state.currentRole === 'admin' ? '系統管理員' : '部門檢視模式'}</div>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
+                        <div>
+                            <h2 class="text-2xl font-bold">全廠調度看板</h2>
+                            <p class="text-sm text-gray-400">所有單據即時同步中</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="window.printDeliveryList()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition flex items-center gap-2">
+                                <i class="fas fa-print"></i> 批量列印配送清單
+                            </button>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${displayOrders.length === 0 ? '<p class="col-span-full text-center py-20 text-gray-500">目前系統內無任何單據</p>' : displayOrders.sort((a,b) => b.id.localeCompare(a.id)).map(o => OrderCard(o)).join('')}
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
+                        ${sortedOrders.length === 0 ? '<p class="col-span-full text-center py-20 text-gray-500">雲端暫無單據資料</p>' : sortedOrders.map(o => OrderCard(o)).join('')}
+                    </div>
+                    
+                    <!-- 列印專用區域 (預設隱藏) -->
+                    <div class="hidden print-area text-black bg-white p-8">
+                        <h1 class="text-3xl font-bold mb-2 text-center border-b-2 border-black pb-4">配送/載回 批量作業清單</h1>
+                        <p class="text-center mb-6">列印時間：${new Date().toLocaleString()}</p>
+                        <table class="w-full border-collapse border border-black">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="border border-black p-2">類別</th>
+                                    <th class="border border-black p-2">對象</th>
+                                    <th class="border border-black p-2">品項明細</th>
+                                    <th class="border border-black p-2">目前狀態</th>
+                                    <th class="border border-black p-2 w-24">簽收</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${state.orders.filter(o => o.status === '待執行' || o.status === '待載回').map(o => `
+                                    <tr>
+                                        <td class="border border-black p-2 text-center">${o.type}</td>
+                                        <td class="border border-black p-2 font-bold">${o.target}</td>
+                                        <td class="border border-black p-2 text-sm">${o.items.map(i => `${i.name}(${i.qty}${i.unit})`).join(', ')}</td>
+                                        <td class="border border-black p-2 text-center text-sm">${o.status}</td>
+                                        <td class="border border-black p-2"></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        <p class="mt-4 text-sm italic">* 請配送人員確認無誤後回報系統 *</p>
                     </div>
                 </div>
             `;
         }
 
         function OrderCard(order) {
-            const statusColors = {
-                '待執行': 'bg-red-500',
-                '加工中': 'bg-yellow-600',
-                '待載回': 'bg-blue-500',
-                '待入庫': 'bg-orange-500',
-                '結案': 'bg-green-600'
-            };
-
+            const statusColors = { '待執行': 'bg-red-500', '加工中': 'bg-yellow-600', '待載回': 'bg-blue-500', '待入庫': 'bg-orange-500', '結案': 'bg-green-600' };
             let actionButtons = '';
             
             if (state.currentRole === 'logistics') {
-                if (order.status === '待執行') {
-                    actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold">${order.type === '加工品' ? '回報：已送達工廠' : '回報：已送交客戶'}</button>`;
-                } else if (order.status === '待載回') {
-                    actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold">回報：已載回廠內</button>`;
-                }
-            } 
-            else if (state.currentRole === 'purchase') {
-                if (order.status === '加工中') {
-                    actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold">確認加工完成 (轉待載回)</button>`;
-                }
-            }
-            else if (state.currentRole === 'warehouse') {
-                if (order.status === '待入庫') {
-                    actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold">確認入庫並結案</button>`;
-                }
-            }
-            else if (state.currentRole === 'admin') {
-                actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs hover:bg-red-700 transition">刪除單據 (清理歷史資料)</button>`;
+                if (order.status === '待執行') actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold shadow-md">回報：已送達</button>`;
+                else if (order.status === '待載回') actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold shadow-md">回報：已載回廠內</button>`;
+            } else if (state.currentRole === 'purchase' && order.status === '加工中') {
+                actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold shadow-md">工廠通知完工 (轉待載回)</button>`;
+            } else if (state.currentRole === 'warehouse' && order.status === '待入庫') {
+                actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold shadow-md">確認入庫並結案</button>`;
+            } else if (state.currentRole === 'admin') {
+                actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs opacity-60 hover:opacity-100 transition">刪除單據 (清理紀錄)</button>`;
             }
 
             return `
-                <div class="card-bg p-6 rounded-2xl shadow-lg border border-gray-700 hover:border-gray-500 transition">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-xs text-gray-400">${order.id}</span>
-                        <span class="${statusColors[order.status]} status-badge">${order.status}</span>
+                <div class="card-bg p-6 rounded-2xl shadow-xl border border-gray-700 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="text-[10px] text-gray-500 font-mono">${order.id.substring(0, 12)}...</span>
+                            <span class="${statusColors[order.status]} status-badge font-bold shadow-sm">${order.status}</span>
+                        </div>
+                        <div class="mb-4">
+                            <span class="text-xs text-orange-400 font-bold block mb-1 tracking-widest">${order.type.toUpperCase()}</span>
+                            <h3 class="text-xl font-bold">${order.target}</h3>
+                        </div>
+                        <div class="space-y-2 mb-4 text-sm text-gray-300 bg-slate-800/50 p-3 rounded-xl border border-gray-700">
+                            ${order.items.map(i => `<div class="flex justify-between"><span>• ${i.name}</span><span class="text-orange-300">${i.qty} ${i.unit}</span></div>`).join('')}
+                        </div>
                     </div>
-                    <div class="mb-4">
-                        <span class="text-xs text-orange-400 block mb-1">${order.type}</span>
-                        <h3 class="text-xl font-bold">${order.target}</h3>
+                    <div>
+                        <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">建立於: ${order.createdAt}</div>
+                        ${actionButtons}
                     </div>
-                    <div class="space-y-1 mb-4 text-sm text-gray-300 bg-slate-800/50 p-3 rounded-lg">
-                        ${order.items.map(i => `<div class="flex justify-between items-center"><span class="truncate pr-2">• ${i.name}</span><span class="text-orange-300 font-medium shrink-0">${i.qty} ${i.unit || ''}</span></div>`).join('')}
-                    </div>
-                    <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">
-                        建立時間: ${order.createdAt}
-                    </div>
-                    ${actionButtons}
                 </div>
             `;
         }
 
-        // --- 事件處理 ---
+        // --- 全局控制函數 ---
+        window.updateView = (params) => {
+            state = { ...state, ...params };
+            render();
+        };
 
-        window.addItemRow = function() {
+        window.addItemRow = () => {
             const container = document.getElementById('itemsContainer');
             const div = document.createElement('div');
             div.className = 'flex gap-2';
-            div.innerHTML = `
-                <input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
-                <input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required>
-                <input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>
-            `;
+            div.innerHTML = `<input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required><input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required><input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>`;
             container.appendChild(div);
         };
 
-        window.handleTaskSubmit = function(e) {
+        window.handleTaskSubmit = async (e) => {
             e.preventDefault();
             const type = document.getElementById('type').value;
             const target = document.getElementById('target').value;
-            const itemRows = document.getElementById('itemsContainer').children;
-            const items = [];
-            for (let row of itemRows) {
+            const rows = document.getElementById('itemsContainer').querySelectorAll('div.flex');
+            const items = Array.from(rows).map(row => {
                 const inputs = row.querySelectorAll('input');
-                items.push({ 
-                    name: inputs[0].value, 
-                    qty: inputs[1].value,
-                    unit: inputs[2].value
-                });
-            }
-            addOrder({ type, target, items });
+                return { name: inputs[0].value, qty: inputs[1].value, unit: inputs[2].value };
+            });
+            await window.addOrder({ type, target, items });
         };
 
-        // --- 主渲染邏輯 ---
+        window.printDeliveryList = () => {
+            window.print();
+        };
 
         function render() {
             const app = document.getElementById('app');
@@ -282,8 +324,8 @@
             }
         }
 
-        // 初始啟動
-        render();
+        // 初始啟動身份驗證
+        initAuth();
 
     </script>
 </body>
