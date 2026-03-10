@@ -141,21 +141,27 @@
                     <h2 class="text-2xl font-bold mb-6">新增調度任務</h2>
                     <form id="taskForm" onsubmit="handleTaskSubmit(event)">
                         <div class="mb-4">
+                            <label class="block text-sm font-bold mb-1">任務類別</label>
                             <select id="type" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
                                 <option value="加工品">加工件 (需載回)</option>
                                 <option value="備品銷售">備品銷售 (直送客戶)</option>
                             </select>
                         </div>
                         <div class="mb-4">
+                            <label class="block text-sm font-bold mb-1">對象名稱</label>
                             <input id="target" required placeholder="對象名稱 (工廠或客戶)" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                        </div>
+                        <div class="mb-2">
+                            <label class="block text-sm font-bold mb-1">品項明細</label>
                         </div>
                         <div id="itemsContainer" class="mb-4 space-y-2">
                             <div class="flex gap-2">
-                                <input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
-                                <input placeholder="量" class="w-24 p-3 border rounded-xl bg-gray-50" required>
+                                <input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
+                                <input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required>
+                                <input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>
                             </div>
                         </div>
-                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block">+ 增加品項</button>
+                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block hover:text-blue-800 transition">+ 增加品項</button>
                         <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition">送出並儲存</button>
                     </form>
                 </div>
@@ -163,8 +169,6 @@
         }
 
         function DashboardView() {
-            // 現在所有角色都可以看到所有單據（包含已完成的）
-            // 只有管理員可以刪除，特定角色可以針對特定狀態進行操作
             let displayOrders = state.orders;
 
             return `
@@ -190,10 +194,8 @@
                 '結案': 'bg-green-600'
             };
 
-            // 定義按鈕邏輯 - 嚴格區分操作權限
             let actionButtons = '';
             
-            // 1. 廠務部操作：回報送達或載回
             if (state.currentRole === 'logistics') {
                 if (order.status === '待執行') {
                     actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold">${order.type === '加工品' ? '回報：已送達工廠' : '回報：已送交客戶'}</button>`;
@@ -201,19 +203,16 @@
                     actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold">回報：已載回廠內</button>`;
                 }
             } 
-            // 2. 採購部操作：確認加工完成
             else if (state.currentRole === 'purchase') {
                 if (order.status === '加工中') {
                     actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold">確認加工完成 (轉待載回)</button>`;
                 }
             }
-            // 3. 倉管部操作：確認入庫
             else if (state.currentRole === 'warehouse') {
                 if (order.status === '待入庫') {
                     actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold">確認入庫並結案</button>`;
                 }
             }
-            // 4. 管理員操作：刪除單據
             else if (state.currentRole === 'admin') {
                 actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs hover:bg-red-700 transition">刪除單據 (清理歷史資料)</button>`;
             }
@@ -229,7 +228,7 @@
                         <h3 class="text-xl font-bold">${order.target}</h3>
                     </div>
                     <div class="space-y-1 mb-4 text-sm text-gray-300 bg-slate-800/50 p-3 rounded-lg">
-                        ${order.items.map(i => `<div class="flex justify-between"><span>• ${i.name}</span><span class="text-orange-300">${i.qty}</span></div>`).join('')}
+                        ${order.items.map(i => `<div class="flex justify-between items-center"><span class="truncate pr-2">• ${i.name}</span><span class="text-orange-300 font-medium shrink-0">${i.qty} ${i.unit || ''}</span></div>`).join('')}
                     </div>
                     <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">
                         建立時間: ${order.createdAt}
@@ -246,8 +245,9 @@
             const div = document.createElement('div');
             div.className = 'flex gap-2';
             div.innerHTML = `
-                <input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
-                <input placeholder="量" class="w-24 p-3 border rounded-xl bg-gray-50" required>
+                <input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
+                <input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required>
+                <input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>
             `;
             container.appendChild(div);
         };
@@ -260,7 +260,11 @@
             const items = [];
             for (let row of itemRows) {
                 const inputs = row.querySelectorAll('input');
-                items.push({ name: inputs[0].value, qty: inputs[1].value });
+                items.push({ 
+                    name: inputs[0].value, 
+                    qty: inputs[1].value,
+                    unit: inputs[2].value
+                });
             }
             addOrder({ type, target, items });
         };
