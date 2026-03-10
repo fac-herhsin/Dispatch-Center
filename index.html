@@ -1,206 +1,286 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>企業調度管理系統</title>
-    <!-- 引入 Tailwind CSS 用於 UI 樣式 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Font Awesome 用於圖標 -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
-            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
             background-color: #0f172a;
-            color: white;
-            transition: background-color 0.3s ease;
-            margin: 0;
-            padding: 0;
+            color: #f8fafc;
+            font-family: "Microsoft JhengHei", sans-serif;
         }
-        /* 表單容器陰影與圓角 */
-        .form-container {
-            background-color: white;
-            color: #1e293b;
-            border-radius: 20px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        .card-bg {
+            background-color: #1e293b;
         }
-        /* 動態新增品項的動畫 */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+        .btn-primary {
+            background-color: #f59e0b;
+            color: #000;
         }
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-out forwards;
+        .btn-primary:hover {
+            background-color: #fbbf24;
         }
-        /* 避免在移動端出現水平滾動 */
-        html, body {
-            overflow-x: hidden;
+        .nav-active {
+            border-bottom: 2px solid #f59e0b;
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
         }
     </style>
 </head>
 <body class="min-h-screen">
 
-    <!-- 頁面 1: 部門選擇頁面 -->
-    <div id="selectionPage" class="flex flex-col items-center justify-center min-h-screen px-4">
-        <h1 class="text-3xl md:text-4xl font-bold mb-2">企業調度管理系統</h1>
-        <p class="text-orange-400 font-medium mb-12 text-center">雲端連線成功，請選擇部門</p>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
-            <!-- 管理員卡片 -->
-            <div onclick="goToForm('管理員')" class="cursor-pointer bg-slate-800/50 border-2 border-orange-400/50 rounded-2xl p-8 flex flex-col items-center justify-center hover:bg-slate-700 transition transform hover:-translate-y-1">
-                <i class="fas fa-user-shield text-4xl text-orange-400 mb-4"></i>
-                <span class="text-xl font-bold text-white">管理員</span>
-            </div>
-
-            <!-- 採購部卡片 -->
-            <div onclick="goToForm('採購')" class="cursor-pointer bg-white rounded-2xl p-8 flex flex-col items-center justify-center hover:bg-gray-100 transition shadow-lg transform hover:-translate-y-1">
-                <i class="fas fa-shopping-cart text-4xl text-orange-500 mb-4"></i>
-                <span class="text-xl font-bold text-slate-800">採購部</span>
-            </div>
-
-            <!-- 廠務部卡片 -->
-            <div onclick="goToForm('廠務')" class="cursor-pointer bg-white rounded-2xl p-8 flex flex-col items-center justify-center hover:bg-gray-100 transition shadow-lg transform hover:-translate-y-1">
-                <i class="fas fa-truck text-4xl text-blue-600 mb-4"></i>
-                <span class="text-xl font-bold text-slate-800">廠務部</span>
-            </div>
-
-            <!-- 倉管部卡片 -->
-            <div onclick="goToForm('倉管')" class="cursor-pointer bg-white rounded-2xl p-8 flex flex-col items-center justify-center hover:bg-gray-100 transition shadow-lg transform hover:-translate-y-1">
-                <i class="fas fa-warehouse text-4xl text-green-600 mb-4"></i>
-                <span class="text-xl font-bold text-slate-800">倉管部</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- 頁面 2: 調度表單頁面 (預設隱藏) -->
-    <div id="formPage" class="hidden min-h-screen bg-slate-50">
-        <!-- 頂部導覽列 -->
-        <nav class="bg-[#0f172a] text-white px-6 py-4 flex justify-between items-center sticky top-0 z-10">
-            <div class="flex items-center space-x-2">
-                <span class="text-xl font-bold tracking-wider">調度系統</span>
-                <span id="deptTag" class="bg-orange-500 text-xs px-2 py-0.5 rounded text-white font-bold">部門</span>
-            </div>
-            <div class="flex items-center space-x-4 md:space-x-6">
-                <a href="#" class="hover:text-orange-400 text-sm md:text-base">看板</a>
-                <button class="bg-orange-500 hover:bg-orange-600 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition">新增單據</button>
-                <a href="javascript:void(0)" onclick="goBack()" class="text-gray-400 hover:text-white text-sm">登出</a>
-            </div>
-        </nav>
-
-        <!-- 表單主體 -->
-        <div class="flex flex-col items-center justify-start py-12 px-4">
-            <div class="form-container w-full max-w-lg p-6 md:p-8">
-                <h2 class="text-2xl font-bold mb-8 text-slate-800 text-center md:text-left">新增調度任務</h2>
-                
-                <form id="dispatchForm" class="space-y-6">
-                    <!-- 調度類型選擇 -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">任務類型</label>
-                        <select class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white appearance-none">
-                            <option>加工件 (需載回)</option>
-                            <option>一般貨物配送</option>
-                            <option>急件處理</option>
-                            <option>廠際移庫</option>
-                        </select>
-                    </div>
-
-                    <!-- 對象名稱輸入 -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">對象名稱</label>
-                        <input type="text" required placeholder="請輸入廠商或地點名稱" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
-                    </div>
-
-                    <!-- 品項與數量動態列表 -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">調度品項</label>
-                        <div id="itemsList" class="space-y-3">
-                            <div class="flex space-x-2">
-                                <input type="text" required placeholder="品項名稱" class="flex-grow border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
-                                <input type="number" required placeholder="量" class="w-24 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400 text-center">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 增加品項按鈕 -->
-                    <button type="button" onclick="addItem()" class="text-blue-600 hover:text-blue-800 text-sm font-bold flex items-center transition">
-                        <i class="fas fa-plus-circle mr-1"></i> 增加品項
-                    </button>
-
-                    <!-- 送出按鈕 -->
-                    <button type="submit" class="w-full bg-[#111827] text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-800 transition mt-6 shadow-md active:scale-[0.98]">
-                        送出並儲存
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- 提示訊息 -->
-    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-8 py-3 rounded-full opacity-0 transition-all duration-300 pointer-events-none z-50 shadow-2xl">
-        <i class="fas fa-check-circle text-green-400 mr-2"></i> 任務儲存成功！
+    <div id="app">
+        <!-- 頁面內容將由 JavaScript 動態渲染 -->
     </div>
 
     <script>
-        /**
-         * 切換至表單頁面
-         */
-        function goToForm(dept) {
-            document.getElementById('selectionPage').classList.add('hidden');
-            document.getElementById('formPage').classList.remove('hidden');
-            document.getElementById('deptTag').innerText = dept;
-            document.body.style.backgroundColor = '#f8fafc';
-            window.scrollTo(0, 0);
+        // 初始化資料 (模擬資料庫)
+        if (!localStorage.getItem('orders')) {
+            localStorage.setItem('orders', JSON.stringify([]));
         }
 
-        /**
-         * 返回部門選擇頁面
-         */
-        function goBack() {
-            if(confirm('確定要登出並返回選擇頁面嗎？')) {
-                document.getElementById('formPage').classList.add('hidden');
-                document.getElementById('selectionPage').classList.remove('hidden');
-                document.body.style.backgroundColor = '#0f172a';
+        let state = {
+            currentRole: 'portal', // portal, purchase, logistics, warehouse, admin
+            orders: JSON.parse(localStorage.getItem('orders')),
+            view: 'dashboard' // dashboard, newTask
+        };
+
+        // 更新儲存空間並重新渲染
+        function updateState(newState) {
+            state = { ...state, ...newState };
+            localStorage.setItem('orders', JSON.stringify(state.orders));
+            render();
+        }
+
+        // --- 功能函數 ---
+        
+        function addOrder(orderData) {
+            const newOrder = {
+                id: 'DEL-' + Date.now(),
+                ...orderData,
+                status: '待執行', // 初始狀態
+                createdAt: new Date().toLocaleString()
+            };
+            const updatedOrders = [...state.orders, newOrder];
+            updateState({ orders: updatedOrders, view: 'dashboard' });
+        }
+
+        function changeStatus(orderId, newStatus) {
+            const updatedOrders = state.orders.map(order => {
+                if (order.id === orderId) {
+                    return { ...order, status: newStatus };
+                }
+                return order;
+            });
+            updateState({ orders: updatedOrders });
+        }
+
+        function deleteOrder(orderId) {
+            const updatedOrders = state.orders.filter(order => order.id !== orderId);
+            updateState({ orders: updatedOrders });
+        }
+
+        // --- 視圖組件 ---
+
+        function Navbar() {
+            const roleLabels = {
+                purchase: '採購部',
+                logistics: '廠務部',
+                warehouse: '倉管部',
+                admin: '管理員'
+            };
+            return `
+                <nav class="flex items-center justify-between px-8 py-4 border-b border-gray-700 bg-slate-900 sticky top-0 z-10">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="updateState({currentRole: 'portal'})">
+                        <span class="text-xl font-bold tracking-wider">調度系統</span>
+                        <span class="bg-orange-500 text-black text-xs px-2 py-0.5 rounded font-bold">${roleLabels[state.currentRole]}</span>
+                    </div>
+                    <div class="flex gap-6 items-center">
+                        <button onclick="updateState({view: 'dashboard'})" class="${state.view === 'dashboard' ? 'text-orange-400 font-bold' : ''}">看板</button>
+                        ${state.currentRole === 'purchase' ? `<button onclick="updateState({view: 'newTask'})" class="bg-orange-500 text-black px-4 py-1.5 rounded-md font-bold hover:bg-orange-400 transition">新增單據</button>` : ''}
+                        <button onclick="updateState({currentRole: 'portal'})" class="text-gray-400 hover:text-white">登出</button>
+                    </div>
+                </nav>
+            `;
+        }
+
+        function PortalView() {
+            return `
+                <div class="flex flex-col items-center justify-center min-h-screen p-4">
+                    <h1 class="text-4xl font-bold mb-2">企業調度管理系統</h1>
+                    <p class="text-orange-400 mb-12">雲端連線成功，請選擇部門</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
+                        ${RoleCard('admin', 'fa-user-shield', '管理員')}
+                        ${RoleCard('purchase', 'fa-shopping-cart', '採購部')}
+                        ${RoleCard('logistics', 'fa-truck', '廠務部')}
+                        ${RoleCard('warehouse', 'fa-warehouse', '倉管部')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function RoleCard(role, icon, label) {
+            return `
+                <div onclick="updateState({currentRole: '${role}', view: 'dashboard'})" 
+                     class="card-bg border-2 border-transparent hover:border-orange-500 cursor-pointer p-10 rounded-2xl flex flex-col items-center justify-center transition-all transform hover:-translate-y-1">
+                    <i class="fas ${icon} text-4xl mb-4 ${role === 'admin' ? 'text-orange-400' : 'text-blue-400'}"></i>
+                    <span class="text-xl font-bold">${label}</span>
+                </div>
+            `;
+        }
+
+        function NewTaskView() {
+            return `
+                ${Navbar()}
+                <div class="max-w-2xl mx-auto mt-12 p-8 bg-white rounded-3xl text-gray-900 shadow-2xl">
+                    <h2 class="text-2xl font-bold mb-6">新增調度任務</h2>
+                    <form id="taskForm" onsubmit="handleTaskSubmit(event)">
+                        <div class="mb-4">
+                            <select id="type" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                <option value="加工品">加工件 (需載回)</option>
+                                <option value="備品銷售">備品銷售 (直送客戶)</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <input id="target" required placeholder="對象名稱 (工廠或客戶)" class="w-full p-3 border rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                        </div>
+                        <div id="itemsContainer" class="mb-4 space-y-2">
+                            <div class="flex gap-2">
+                                <input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
+                                <input placeholder="量" class="w-24 p-3 border rounded-xl bg-gray-50" required>
+                            </div>
+                        </div>
+                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block">+ 增加品項</button>
+                        <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition">送出並儲存</button>
+                    </form>
+                </div>
+            `;
+        }
+
+        function DashboardView() {
+            // 現在所有角色都可以看到所有單據（包含已完成的）
+            // 只有管理員可以刪除，特定角色可以針對特定狀態進行操作
+            let displayOrders = state.orders;
+
+            return `
+                ${Navbar()}
+                <div class="p-8 max-w-7xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <h2 class="text-2xl font-bold">全廠調度看板 (${displayOrders.length})</h2>
+                        <div class="text-sm text-gray-400">目前身分：${state.currentRole === 'admin' ? '系統管理員' : '部門檢視模式'}</div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${displayOrders.length === 0 ? '<p class="col-span-full text-center py-20 text-gray-500">目前系統內無任何單據</p>' : displayOrders.sort((a,b) => b.id.localeCompare(a.id)).map(o => OrderCard(o)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function OrderCard(order) {
+            const statusColors = {
+                '待執行': 'bg-red-500',
+                '加工中': 'bg-yellow-600',
+                '待載回': 'bg-blue-500',
+                '待入庫': 'bg-orange-500',
+                '結案': 'bg-green-600'
+            };
+
+            // 定義按鈕邏輯 - 嚴格區分操作權限
+            let actionButtons = '';
+            
+            // 1. 廠務部操作：回報送達或載回
+            if (state.currentRole === 'logistics') {
+                if (order.status === '待執行') {
+                    actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold">${order.type === '加工品' ? '回報：已送達工廠' : '回報：已送交客戶'}</button>`;
+                } else if (order.status === '待載回') {
+                    actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold">回報：已載回廠內</button>`;
+                }
+            } 
+            // 2. 採購部操作：確認加工完成
+            else if (state.currentRole === 'purchase') {
+                if (order.status === '加工中') {
+                    actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold">確認加工完成 (轉待載回)</button>`;
+                }
+            }
+            // 3. 倉管部操作：確認入庫
+            else if (state.currentRole === 'warehouse') {
+                if (order.status === '待入庫') {
+                    actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold">確認入庫並結案</button>`;
+                }
+            }
+            // 4. 管理員操作：刪除單據
+            else if (state.currentRole === 'admin') {
+                actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs hover:bg-red-700 transition">刪除單據 (清理歷史資料)</button>`;
+            }
+
+            return `
+                <div class="card-bg p-6 rounded-2xl shadow-lg border border-gray-700 hover:border-gray-500 transition">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-xs text-gray-400">${order.id}</span>
+                        <span class="${statusColors[order.status]} status-badge">${order.status}</span>
+                    </div>
+                    <div class="mb-4">
+                        <span class="text-xs text-orange-400 block mb-1">${order.type}</span>
+                        <h3 class="text-xl font-bold">${order.target}</h3>
+                    </div>
+                    <div class="space-y-1 mb-4 text-sm text-gray-300 bg-slate-800/50 p-3 rounded-lg">
+                        ${order.items.map(i => `<div class="flex justify-between"><span>• ${i.name}</span><span class="text-orange-300">${i.qty}</span></div>`).join('')}
+                    </div>
+                    <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">
+                        建立時間: ${order.createdAt}
+                    </div>
+                    ${actionButtons}
+                </div>
+            `;
+        }
+
+        // --- 事件處理 ---
+
+        window.addItemRow = function() {
+            const container = document.getElementById('itemsContainer');
+            const div = document.createElement('div');
+            div.className = 'flex gap-2';
+            div.innerHTML = `
+                <input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
+                <input placeholder="量" class="w-24 p-3 border rounded-xl bg-gray-50" required>
+            `;
+            container.appendChild(div);
+        };
+
+        window.handleTaskSubmit = function(e) {
+            e.preventDefault();
+            const type = document.getElementById('type').value;
+            const target = document.getElementById('target').value;
+            const itemRows = document.getElementById('itemsContainer').children;
+            const items = [];
+            for (let row of itemRows) {
+                const inputs = row.querySelectorAll('input');
+                items.push({ name: inputs[0].value, qty: inputs[1].value });
+            }
+            addOrder({ type, target, items });
+        };
+
+        // --- 主渲染邏輯 ---
+
+        function render() {
+            const app = document.getElementById('app');
+            if (state.currentRole === 'portal') {
+                app.innerHTML = PortalView();
+            } else if (state.view === 'newTask') {
+                app.innerHTML = NewTaskView();
+            } else {
+                app.innerHTML = DashboardView();
             }
         }
 
-        /**
-         * 動態增加品項輸入框
-         */
-        function addItem() {
-            const container = document.getElementById('itemsList');
-            const newRow = document.createElement('div');
-            newRow.className = 'flex space-x-2 animate-fade-in';
-            newRow.innerHTML = `
-                <input type="text" required placeholder="品項名稱" class="flex-grow border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
-                <input type="number" required placeholder="量" class="w-24 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400 text-center">
-                <button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-500 px-2 transition">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
-            `;
-            container.appendChild(newRow);
-        }
+        // 初始啟動
+        render();
 
-        /**
-         * 處理表單提交
-         */
-        document.getElementById('dispatchForm').onsubmit = function(e) {
-            e.preventDefault();
-            const toast = document.getElementById('toast');
-            toast.classList.remove('opacity-0', 'translate-y-10');
-            toast.classList.add('opacity-100', '-translate-y-2');
-            
-            setTimeout(() => {
-                toast.classList.remove('opacity-100', '-translate-y-2');
-                toast.classList.add('opacity-0', 'translate-y-10');
-                this.reset();
-                document.getElementById('itemsList').innerHTML = `
-                    <div class="flex space-x-2">
-                        <input type="text" required placeholder="品項名稱" class="flex-grow border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
-                        <input type="number" required placeholder="量" class="w-24 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400 text-center">
-                    </div>
-                `;
-            }, 2500);
-        };
     </script>
 </body>
 </html>
