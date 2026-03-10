@@ -3,62 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業調度管理系統 - 手動同步版</title>
+    <title>企業調度管理系統 - 穩定修復版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background-color: #0f172a;
             color: #f8fafc;
-            font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+            font-family: "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
         }
         .card-bg { background-color: #1e293b; }
-        .btn-primary { background-color: #1a202c; color: white; border-radius: 1rem; }
-        .btn-primary:hover { background-color: #2d3748; }
-        .status-tag { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
         
-        /* 列印相關設定 */
+        /* 列印區域強化 - 確保在 iframe/預覽中也能正確觸發 */
         @media print {
-            .no-print { display: none !important; }
-            body { background: white !important; color: black !important; padding: 0 !important; }
-            .print-area { display: block !important; width: 100% !important; }
-            table { width: 100% !important; border-collapse: collapse !important; margin-top: 20px; }
-            th, td { border: 1px solid black !important; padding: 10px !important; color: black !important; text-align: left; }
-            .print-header { text-align: center; margin-bottom: 20px; }
-            .print-footer { margin-top: 30px; display: grid; grid-template-cols: 1fr 1fr; gap: 20px; }
-            .page-break { page-break-after: always; }
+            #app, .no-print, nav { display: none !important; }
+            body, html { background: white !important; color: black !important; overflow: visible !important; height: auto !important; }
+            #print-area { 
+                display: block !important; 
+                visibility: visible !important; 
+                width: 100% !important; 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                z-index: 9999;
+            }
+            .print-page { 
+                page-break-after: always; 
+                color: black !important; 
+                padding: 30px;
+                border-bottom: 2px solid #000;
+            }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; border: 1px solid black; }
+            th, td { border: 1px solid black !important; padding: 12px; text-align: left; color: black !important; }
+            .sign-section { display: flex; justify-content: space-between; margin-top: 50px; }
+            .sign-box { border-bottom: 1px solid black; width: 200px; padding-bottom: 5px; }
         }
-        .print-area { display: none; }
+        
+        #print-area { display: none; }
 
-        .spin-orange {
-            width: 50px;
-            height: 50px;
-            border: 5px solid rgba(255,255,255,0.1);
-            border-top: 5px solid #f97316;
+        .loader-ring {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #f97316;
             border-radius: 50%;
+            width: 45px;
+            height: 45px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .sync-rotate { animation: spin 1s linear infinite; }
     </style>
 </head>
-<body class="min-h-screen">
+<body>
 
     <div id="app">
-        <!-- 初始載入畫面 -->
-        <div id="loading-screen" class="flex flex-col items-center justify-center min-h-screen">
-            <div class="spin-orange mb-6"></div>
-            <p id="status-msg" class="text-lg font-medium tracking-widest">系統啟動中...</p>
-            <div id="debug-info" class="mt-4 text-[10px] text-gray-600 font-mono"></div>
+        <!-- 初始載入 UI -->
+        <div id="init-loader" class="flex flex-col items-center justify-center min-h-screen">
+            <div class="loader-ring mb-4"></div>
+            <p id="loader-text" class="text-orange-500 font-bold tracking-widest uppercase animate-pulse">系統連線中...</p>
         </div>
     </div>
+
+    <!-- 獨立列印 DOM -->
+    <div id="print-area"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 1. 初始化 Firebase
+        // 1. Firebase 配置
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -67,99 +83,136 @@
 
         let state = {
             user: null,
-            currentRole: 'portal',
+            role: 'portal',
             orders: [],
             view: 'dashboard',
-            isRefreshing: false,
-            hasLoadedOnce: false,
-            printList: [] // 儲存當前要列印的清單
+            isInited: false,
+            isSyncing: false
         };
 
-        // 2. 認證流程
-        async function startAuth() {
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    state.user = user;
-                    if (!state.hasLoadedOnce) {
-                        await manualSync();
-                        state.hasLoadedOnce = true;
-                    }
-                    render();
+        // 2. 核心啟動流程 (修正卡死問題)
+        async function bootstrap() {
+            try {
+                // 先進行認證 (Rule 3)
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token).catch(e => console.error(e));
-                    } else {
-                        await signInAnonymously(auth).catch(e => console.error(e));
-                    }
+                    await signInAnonymously(auth);
                 }
-            });
+
+                // 認證成功後啟動監聽
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        state.user = user;
+                        if (!state.isInited) {
+                            await fetchData(); // 獲取第一手資料
+                            state.isInited = true;
+                            render();
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("Bootstrap Error:", err);
+                const loaderText = document.getElementById('loader-text');
+                if (loaderText) loaderText.innerHTML = "連線失敗<br><button onclick='location.reload()' class='mt-4 text-xs underline'>點此重試</button>";
+            }
         }
 
-        // 3. 手動雲端同步功能
-        window.manualSync = async () => {
-            if (!state.user || state.isRefreshing) return;
-            state.isRefreshing = true;
+        // 3. 資料獲取 (Rule 2)
+        async function fetchData() {
+            if (!state.user) return;
+            state.isSyncing = true;
             render();
-
             try {
                 const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-                const querySnapshot = await getDocs(colRef);
-                const orders = [];
-                querySnapshot.forEach((doc) => {
-                    orders.push({ id: doc.id, ...doc.data() });
-                });
-                state.orders = orders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            } catch (error) {
-                console.error("Sync Error:", error);
+                const snap = await getDocs(colRef);
+                const results = [];
+                snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+                // 在記憶體中進行排序
+                state.orders = results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            } catch (err) {
+                console.error("Data Fetch Error:", err);
             } finally {
-                state.isRefreshing = false;
+                state.isSyncing = false;
                 render();
+            }
+        }
+
+        // --- 全域功能函數 ---
+        window.handleDelete = async (id) => {
+            if (state.role !== 'admin') return;
+            if (!confirm("確定要刪除這筆單據嗎？此操作不可復原。")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', id));
+                state.orders = state.orders.filter(o => o.id !== id);
+                render();
+            } catch (err) {
+                alert("刪除失敗，請檢查權限");
             }
         };
 
-        // --- 列印功能 ---
-        window.handlePrint = (type, orderId = null) => {
-            if (type === 'batch') {
-                // 批量列印：選取所有「未結案」的單據
-                state.printList = state.orders.filter(o => o.status !== '結案');
-            } else if (type === 'single' && orderId) {
-                // 單張列印
-                const target = state.orders.find(o => o.id === orderId);
-                state.printList = target ? [target] : [];
-            }
-            
-            if (state.printList.length === 0) {
-                alert("目前沒有可列印的內容");
-                return;
+        window.handlePrint = (id = null) => {
+            let targets = [];
+            if (id) {
+                const target = state.orders.find(o => o.id === id);
+                if (target) targets = [target];
+            } else {
+                targets = state.orders.filter(o => o.status !== '結案');
             }
 
-            render(); // 更新渲染以顯示隱藏的列印區域
+            if (targets.length === 0) return alert("無可列印內容");
+
+            const printContainer = document.getElementById('print-area');
+            printContainer.innerHTML = targets.map(o => `
+                <div class="print-page">
+                    <h1 style="text-align:center; font-size:28px; margin-bottom:5px;">企業調度管理系統 - 配送單</h1>
+                    <p style="text-align:center; font-size:12px;">列印時間：${new Date().toLocaleString()}</p>
+                    <div style="margin:20px 0; border-top:1px solid #eee; padding-top:10px;">
+                        <p>單據編號：#${o.id.toUpperCase()}</p>
+                        <p>建立日期：${o.createdAt}</p>
+                    </div>
+                    <table>
+                        <tr><th style="width:30%">任務類別</th><td>${o.type}</td></tr>
+                        <tr><th>目標廠商</th><td><b style="font-size:18px;">${o.target}</b></td></tr>
+                        <tr><th>品項明細</th><td>
+                            ${o.items.map(i => `• ${i.name} [數量: ${i.qty}]`).join('<br>')}
+                        </td></tr>
+                    </table>
+                    <div class="sign-section">
+                        <div class="sign-box">物流/司機簽章:</div>
+                        <div class="sign-box">主管/會計核章:</div>
+                    </div>
+                </div>
+            `).join('');
+
+            // 確保內容填入後再觸發列印
             setTimeout(() => {
                 window.print();
             }, 500);
         };
 
-        // --- 核心操作 ---
-        window.changeRole = (role) => {
-            state.currentRole = role;
-            state.view = 'dashboard';
-            render();
-        };
-
-        window.setView = (view) => {
+        window.navigate = (view, role = null) => {
             state.view = view;
+            if (role) state.role = role;
             render();
         };
 
-        window.submitOrder = async (e) => {
-            e.preventDefault();
-            if (!state.user) return;
+        window.updateStatus = async (id, newStatus) => {
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', id);
+                await updateDoc(docRef, { status: newStatus });
+                await fetchData();
+            } catch (err) {
+                console.error(err);
+            }
+        };
 
+        window.submitTask = async (e) => {
+            e.preventDefault();
             const items = Array.from(document.querySelectorAll('.item-row')).map(row => ({
                 name: row.querySelector('.i-name').value,
-                qty: row.querySelector('.i-qty').value,
-                unit: '件'
-            }));
+                qty: row.querySelector('.i-qty').value
+            })).filter(i => i.name && i.qty);
 
             const data = {
                 type: document.getElementById('o-type').value,
@@ -171,186 +224,144 @@
             };
 
             try {
-                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-                await addDoc(colRef, data);
-                await manualSync();
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), data);
+                await fetchData();
                 state.view = 'dashboard';
                 render();
             } catch (err) {
-                console.error("Add Doc Error:", err);
+                console.error(err);
             }
         };
 
-        window.updateStatus = async (id, status) => {
-            if (!state.user) return;
-            try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', id);
-                await updateDoc(docRef, { status });
-                await manualSync();
-            } catch (err) {
-                console.error("Update Error:", err);
-            }
-        };
-
-        window.addInputRow = () => {
-            const container = document.getElementById('items-container');
+        window.addMoreItem = () => {
+            const container = document.getElementById('items-list');
             const div = document.createElement('div');
             div.className = "flex gap-2 item-row mt-2";
-            div.innerHTML = `<input placeholder="品項名稱" class="i-name flex-grow p-4 bg-gray-100 rounded-2xl border-none outline-none"><input placeholder="數量" class="i-qty w-24 p-4 bg-gray-100 rounded-2xl border-none outline-none">`;
+            div.innerHTML = `
+                <input placeholder="品項名稱" class="i-name flex-grow p-4 bg-gray-100 rounded-xl border-none">
+                <input placeholder="量" class="i-qty w-20 p-4 bg-gray-100 rounded-xl border-none">
+            `;
             container.appendChild(div);
         };
 
-        // --- UI 渲染 ---
+        // --- 介面渲染 ---
         function render() {
-            const app = document.getElementById('app');
-            if (!state.user && !state.hasLoadedOnce) return;
+            const root = document.getElementById('app');
+            if (!state.isInited) return;
 
-            // 頂部導航
-            const navbar = (state.currentRole === 'portal') ? '' : `
-                <nav class="no-print flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-gray-800 sticky top-0 z-50">
-                    <div class="flex items-center gap-2 cursor-pointer" onclick="changeRole('portal')">
-                        <span class="text-xl font-bold">調度系統</span>
-                        <span class="bg-orange-500 text-black text-[10px] px-2 py-0.5 rounded font-black">
-                            ${state.currentRole === 'admin' ? '管理' : state.currentRole === 'purchase' ? '採購' : state.currentRole === 'logistics' ? '廠務' : '倉管'}
-                        </span>
-                    </div>
-                    <div class="flex items-center gap-3 text-sm font-bold">
-                        <!-- 雲端同步 -->
-                        <button onclick="manualSync()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-orange-400 transition-colors">
-                            <i class="fas fa-sync-alt ${state.isRefreshing ? 'sync-rotate' : ''}"></i>
-                            ${state.isRefreshing ? '同步中' : '同步'}
-                        </button>
-                        
-                        <!-- 批量列印 -->
-                        <button onclick="handlePrint('batch')" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-white">
-                            <i class="fas fa-print"></i> 批量列印
-                        </button>
-
-                        <div class="h-6 w-[1px] bg-gray-700 mx-1"></div>
-
-                        <button onclick="setView('dashboard')" class="${state.view === 'dashboard' ? 'text-white' : 'text-gray-400'}">看板</button>
-                        ${state.currentRole === 'purchase' ? `<button onclick="setView('newTask')" class="bg-orange-500 text-black px-4 py-1.5 rounded-lg hover:bg-orange-400">新增</button>` : ''}
-                        <button onclick="changeRole('portal')" class="text-gray-500 hover:text-white">登出</button>
-                    </div>
-                </nav>
-            `;
-
-            if (state.currentRole === 'portal') {
-                app.innerHTML = `
-                    <div class="min-h-screen flex flex-col items-center justify-center p-6 no-print">
-                        <h1 class="text-4xl font-bold mb-2">企業調度管理系統</h1>
-                        <p class="text-orange-500 font-bold mb-12 uppercase text-sm tracking-widest">Enterprise Dispatch System</p>
+            if (state.role === 'portal') {
+                root.innerHTML = `
+                    <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                        <h1 class="text-5xl font-black mb-2 italic tracking-tighter">EDM SYSTEM</h1>
+                        <p class="text-orange-500 font-bold mb-16 tracking-widest text-sm uppercase">Dispatch & Logistics Management</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
-                            ${['admin', 'purchase', 'logistics', 'warehouse'].map(id => `
-                                <div onclick="changeRole('${id}')" class="bg-white text-slate-900 p-8 rounded-3xl flex flex-col items-center shadow-xl cursor-pointer hover:scale-105 transition duration-300">
-                                    <div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
-                                        <i class="fas ${id==='admin'?'fa-user-shield':id==='purchase'?'fa-shopping-cart':id==='logistics'?'fa-truck':'fa-warehouse'} text-2xl text-blue-600"></i>
-                                    </div>
-                                    <span class="text-xl font-black">${id==='admin'?'管理員':id==='purchase'?'採購部':id==='logistics'?'廠務部':'倉管部'}</span>
+                            ${[
+                                { id: 'admin', label: '管理中心', icon: 'fa-user-shield', color: 'text-red-500' },
+                                { id: 'purchase', label: '採購部門', icon: 'fa-shopping-cart', color: 'text-blue-500' },
+                                { id: 'logistics', label: '廠務運輸', icon: 'fa-truck', color: 'text-orange-500' },
+                                { id: 'warehouse', label: '資材倉儲', icon: 'fa-warehouse', color: 'text-green-500' }
+                            ].map(r => `
+                                <div onclick="navigate('dashboard', '${r.id}')" class="bg-white text-slate-900 p-10 rounded-[2rem] shadow-2xl cursor-pointer hover:-translate-y-2 transition-all">
+                                    <div class="mb-6"><i class="fas ${r.icon} text-4xl ${r.color}"></i></div>
+                                    <div class="text-2xl font-black">${r.label}</div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
                 `;
-            } else if (state.view === 'newTask') {
-                app.innerHTML = navbar + `
-                    <div class="max-w-xl mx-auto mt-10 p-8 bg-white rounded-3xl text-slate-900 shadow-2xl no-print">
-                        <h2 class="text-2xl font-black mb-8"><i class="fas fa-plus-circle text-orange-500"></i> 新增調度任務</h2>
-                        <form onsubmit="submitOrder(event)">
-                            <div class="mb-4">
-                                <label class="block text-xs font-bold text-gray-400 mb-2">任務類別</label>
-                                <select id="o-type" class="w-full p-4 bg-gray-100 rounded-2xl border-none font-bold outline-none">
-                                    <option value="加工件 (需載回)">加工件 (需載回)</option>
-                                    <option value="備品銷售 (直送)">備品銷售 (直送)</option>
+                return;
+            }
+
+            const header = `
+                <header class="no-print p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50">
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="navigate('dashboard', 'portal')">
+                        <i class="fas fa-chevron-left text-xs"></i>
+                        <span class="font-bold tracking-tighter">${state.role.toUpperCase()} PORTAL</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <i onclick="fetchData()" class="fas fa-sync-alt cursor-pointer ${state.isSyncing ? 'sync-rotate text-orange-500' : ''}"></i>
+                        <button onclick="handlePrint()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold">批量列印</button>
+                        ${state.role === 'purchase' ? `<button onclick="navigate('new')" class="bg-orange-500 text-black px-4 py-1.5 rounded-lg text-sm font-bold">建立單據</button>` : ''}
+                        <button onclick="navigate('dashboard')" class="text-sm text-gray-400 hover:text-white font-bold">看板</button>
+                    </div>
+                </header>
+            `;
+
+            if (state.view === 'new') {
+                root.innerHTML = header + `
+                    <div class="p-8 max-w-xl mx-auto bg-white text-slate-900 rounded-[2.5rem] mt-10 shadow-2xl no-print">
+                        <h2 class="text-2xl font-black mb-8">建立配送任務</h2>
+                        <form onsubmit="submitTask(event)">
+                            <div class="mb-6">
+                                <label class="text-[10px] font-black text-gray-400 uppercase block mb-1">任務類別</label>
+                                <select id="o-type" class="w-full p-4 bg-gray-100 rounded-2xl border-none outline-none font-bold">
+                                    <option>加工件 (需載回)</option>
+                                    <option>備品銷售 (直送)</option>
                                 </select>
                             </div>
-                            <div class="mb-4">
-                                <label class="block text-xs font-bold text-gray-400 mb-2">對象名稱</label>
-                                <input id="o-target" placeholder="例如：某某加工廠" required class="w-full p-4 bg-gray-100 rounded-2xl border-none font-bold outline-none">
+                            <div class="mb-6">
+                                <label class="text-[10px] font-black text-gray-400 uppercase block mb-1">目標客戶/廠商</label>
+                                <input id="o-target" placeholder="請輸入名稱" required class="w-full p-4 bg-gray-100 rounded-2xl border-none outline-none font-bold">
                             </div>
-                            <div id="items-container">
-                                <label class="block text-xs font-bold text-gray-400 mb-2">品項與數量</label>
+                            <div id="items-list" class="mb-2">
+                                <label class="text-[10px] font-black text-gray-400 uppercase block mb-1">品項明細</label>
                                 <div class="flex gap-2 item-row">
-                                    <input placeholder="品項名稱" class="i-name flex-grow p-4 bg-gray-100 rounded-2xl border-none outline-none" required>
-                                    <input placeholder="數量" class="i-qty w-24 p-4 bg-gray-100 rounded-2xl border-none outline-none" required>
+                                    <input placeholder="品項名稱" class="i-name flex-grow p-4 bg-gray-100 rounded-2xl border-none font-bold" required>
+                                    <input placeholder="量" class="i-qty w-24 p-4 bg-gray-100 rounded-2xl border-none font-bold" required>
                                 </div>
                             </div>
-                            <button type="button" onclick="addInputRow()" class="text-blue-600 font-bold text-sm mt-3 mb-6 hover:text-blue-800">+ 增加品項</button>
-                            <button type="submit" class="w-full py-5 btn-primary font-black text-lg shadow-lg">送出並儲存</button>
+                            <button type="button" onclick="addMoreItem()" class="text-blue-600 text-xs font-bold mb-8">+ 增加品項</button>
+                            <button type="submit" class="w-full py-5 bg-slate-900 text-white font-black rounded-3xl shadow-lg hover:bg-black transition-all">確認存檔並發布至看板</button>
                         </form>
                     </div>
                 `;
             } else {
-                app.innerHTML = navbar + `
-                    <div class="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto no-print">
+                root.innerHTML = header + `
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto no-print">
                         ${state.orders.length > 0 ? state.orders.map(o => `
-                            <div class="card-bg p-6 rounded-2xl shadow-lg border border-gray-800 flex flex-col relative group">
-                                <!-- 單張列印按鈕 -->
-                                <button onclick="handlePrint('single', '${o.id}')" class="absolute top-4 right-4 text-gray-600 hover:text-white transition-colors">
-                                    <i class="fas fa-print"></i>
-                                </button>
-                                
+                            <div class="card-bg p-6 rounded-[2rem] border border-slate-800 relative flex flex-col shadow-xl">
+                                <div class="absolute top-6 right-6 flex gap-4 text-slate-500">
+                                    <i onclick="handlePrint('${o.id}')" class="fas fa-print cursor-pointer hover:text-white transition-colors"></i>
+                                    ${state.role === 'admin' ? `<i onclick="handleDelete('${o.id}')" class="fas fa-trash-alt cursor-pointer hover:text-red-500 transition-colors"></i>` : ''}
+                                </div>
                                 <div class="flex justify-between items-start mb-4">
-                                    <span class="text-[10px] font-mono text-gray-500">#${o.id.substring(0,6).toUpperCase()}</span>
-                                    <span class="status-tag ${o.status === '待執行' ? 'bg-red-500' : o.status === '結案' ? 'bg-green-600' : 'bg-blue-500'}">${o.status}</span>
+                                    <span class="text-[9px] font-mono text-slate-500">ID: #${o.id.slice(-6).toUpperCase()}</span>
+                                    <span class="px-3 py-1 rounded-full text-[10px] font-black ${o.status === '待執行' ? 'bg-red-500 text-white' : o.status === '結案' ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}">${o.status}</span>
                                 </div>
-                                <h3 class="text-xl font-bold mb-1">${o.target}</h3>
-                                <p class="text-xs text-orange-400 font-bold mb-4">${o.type}</p>
-                                <div class="bg-slate-800/50 p-4 rounded-xl space-y-2 mb-6 flex-grow border border-gray-700/50">
-                                    ${o.items.map(i => `<div class="flex justify-between text-sm"><span>${i.name}</span><span class="font-bold text-orange-200">${i.qty}</span></div>`).join('')}
+                                <h3 class="text-2xl font-black mb-1 pr-12 leading-tight">${o.target}</h3>
+                                <p class="text-[10px] text-orange-500 font-bold mb-6 tracking-widest uppercase">${o.type}</p>
+                                <div class="bg-slate-800/50 p-5 rounded-2xl mb-8 flex-grow border border-slate-700/30">
+                                    ${o.items.map(i => `<div class="flex justify-between text-sm mb-1"><span>${i.name}</span><b class="text-orange-400">${i.qty}</b></div>`).join('')}
                                 </div>
-                                ${renderActionBtn(o)}
+                                ${renderAction(o)}
                             </div>
-                        `).join('') : '<p class="col-span-full text-center py-20 opacity-40">目前無單據</p>'}
-                    </div>
-                    <!-- 列印區域 -->
-                    <div class="print-area">
-                        ${state.printList.map((o, idx) => `
-                            <div class="${idx < state.printList.length - 1 ? 'page-break' : ''}">
-                                <div class="print-header">
-                                    <h1 style="font-size: 24px; font-weight: bold;">企業調度配送單</h1>
-                                    <p style="font-size: 12px;">列印時間：${new Date().toLocaleString()}</p>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                                    <span>單據編號：#${o.id.toUpperCase()}</span>
-                                    <span>建立日期：${o.createdAt}</span>
-                                </div>
-                                <table>
-                                    <tr>
-                                        <th style="width: 20%;">任務類型</th>
-                                        <th style="width: 30%;">對象名稱</th>
-                                        <th style="width: 30%;">品項內容</th>
-                                        <th style="width: 20%;">目前狀態</th>
-                                    </tr>
-                                    <tr>
-                                        <td>${o.type}</td>
-                                        <td><strong>${o.target}</strong></td>
-                                        <td>${o.items.map(i => `${i.name} x ${i.qty}`).join('<br>')}</td>
-                                        <td>${o.status}</td>
-                                    </tr>
-                                </table>
-                                <div class="print-footer">
-                                    <div style="border-bottom: 1px solid black; padding-top: 40px;">司機簽名：</div>
-                                    <div style="border-bottom: 1px solid black; padding-top: 40px;">單位主管簽章：</div>
-                                </div>
-                                <p style="font-size: 10px; margin-top: 20px; color: gray; text-align: center;">-- 系統存根聯 --</p>
+                        `).join('') : `
+                            <div class="col-span-full py-40 text-center opacity-20">
+                                <i class="fas fa-box-open text-6xl mb-4"></i>
+                                <p class="text-2xl font-black italic uppercase">Database Empty</p>
                             </div>
-                        `).join('')}
+                        `}
                     </div>
                 `;
             }
         }
 
-        function renderActionBtn(o) {
-            if (o.status === '結案') return `<div class="text-[10px] text-gray-600 text-center italic">結案於: ${o.createdAt}</div>`;
-            if (state.currentRole === 'logistics' && o.status === '待執行') return `<button onclick="updateStatus('${o.id}', '${o.type.includes('需載回') ? '加工中' : '結案'}')" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold">回報已送達</button>`;
-            if (state.currentRole === 'purchase' && o.status === '加工中') return `<button onclick="updateStatus('${o.id}', '待載回')" class="w-full py-3 bg-orange-600 hover:bg-orange-500 rounded-xl font-bold">通知載回</button>`;
-            if (state.currentRole === 'logistics' && o.status === '待載回') return `<button onclick="updateStatus('${o.id}', '待入庫')" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold">司機已載回</button>`;
-            if (state.currentRole === 'warehouse' && o.status === '待入庫') return `<button onclick="updateStatus('${o.id}', '結案')" class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl font-bold">確認入庫</button>`;
-            return `<div class="text-[10px] text-gray-600 text-center italic">建立時間: ${o.createdAt}</div>`;
+        function renderAction(o) {
+            if (o.status === '結案') return `<div class="text-center text-[10px] text-slate-600 font-bold italic">任務已完成於 ${o.createdAt}</div>`;
+            const r = state.role;
+            let act = null;
+
+            if (r === 'logistics' && o.status === '待執行') act = { l: "確認送達目的地", s: o.type.includes('需載回') ? '加工中' : '結案', c: 'bg-blue-600' };
+            else if (r === 'purchase' && o.status === '加工中') act = { l: "通知載回廠區", s: '待載回', c: 'bg-orange-600' };
+            else if (r === 'logistics' && o.status === '待載回') act = { l: "司機回程中", s: '待入庫', c: 'bg-indigo-600' };
+            else if (r === 'warehouse' && o.status === '待入庫') act = { l: "核點入庫完成", s: '結案', c: 'bg-green-600' };
+
+            if (act) return `<button onclick="updateStatus('${o.id}', '${act.s}')" class="w-full py-4 ${act.c} text-white font-black rounded-2xl shadow-lg active:scale-95 transition-all">${act.l}</button>`;
+            return `<div class="text-center text-[10px] text-slate-700 font-bold italic">等待相關單位處理中...</div>`;
         }
 
-        startAuth();
+        // 啟動應用程式
+        bootstrap();
     </script>
 </body>
 </html>
