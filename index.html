@@ -20,12 +20,15 @@
             border-radius: 4px;
             font-size: 0.8rem;
         }
+        /* 列印相關設定 */
         @media print {
             .no-print { display: none !important; }
-            body { background-color: white !important; color: black !important; }
-            .card-bg { background-color: white !important; border: 1px solid #ccc !important; color: black !important; }
-            .print-area { display: block !important; }
+            body { background-color: white !important; color: black !important; padding: 0 !important; }
+            .print-area { display: block !important; width: 100% !important; }
+            table { width: 100% !important; border-collapse: collapse !important; }
+            th, td { border: 1px solid black !important; padding: 8px !important; color: black !important; }
         }
+        .print-area { display: none; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -42,8 +45,8 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase 設定由環境變數注入
         const firebaseConfig = JSON.parse(__firebase_config);
@@ -56,30 +59,19 @@
             currentRole: 'portal',
             orders: [],
             view: 'dashboard',
-            user: null
+            user: null,
+            printMode: 'all', // all, single
+            singlePrintTarget: null
         };
 
-        // --- 初始化身份驗證 (Rule 3) ---
-        async function initAuth() {
-            try {
-                await signInAnonymously(auth);
-            } catch (error) {
-                console.error("Auth Error", error);
-            }
-        }
-
-        onAuthStateChanged(auth, (user) => {
-            state.user = user;
-            if (user) {
-                startSync();
-            }
-            render();
-        });
-
-        // --- 雲端即時同步 (Rule 1 & 2) ---
-        function startSync() {
+        // --- 雲端即時同步 (遵循 Rule 3: 必須在 Auth 之後) ---
+        function startSync(user) {
+            if (!user) return;
+            
+            // 建立指向 /artifacts/{appId}/public/data/orders 的路徑 (遵循 Rule 1)
             const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-            // 使用簡單查詢以避免索引問題 (Rule 2)
+            
+            // 監聽雲端資料變動
             onSnapshot(colRef, (snapshot) => {
                 const orders = [];
                 snapshot.forEach((doc) => {
@@ -92,30 +84,80 @@
             });
         }
 
-        // --- 資料操作功能 ---
+        // --- 初始化身份驗證 (遵循 Rule 3) ---
+        async function initApp() {
+            try {
+                // 1. 先設定認證狀態監聽器
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        state.user = user;
+                        // 2. 只有在確認有 user 對象後才啟動同步
+                        startSync(user);
+                    }
+                    render();
+                });
+
+                // 3. 嘗試登入 (優先使用 Custom Token)
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Initialization Error", error);
+            }
+        }
+
+        // --- 資料操作 ---
         window.addOrder = async (orderData) => {
             if (!state.user) return;
-            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-            await addDoc(colRef, {
-                ...orderData,
-                status: '待執行',
-                createdAt: new Date().toLocaleString(),
-                timestamp: Date.now()
-            });
-            state.view = 'dashboard';
-            render();
+            try {
+                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+                await addDoc(colRef, {
+                    ...orderData,
+                    status: '待執行',
+                    createdAt: new Date().toLocaleString(),
+                    timestamp: Date.now()
+                });
+                state.view = 'dashboard';
+                render();
+            } catch (e) {
+                console.error("Add Order Error", e);
+            }
         };
 
         window.changeStatus = async (docId, newStatus) => {
             if (!state.user) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
-            await updateDoc(docRef, { status: newStatus });
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
+                await updateDoc(docRef, { status: newStatus });
+            } catch (e) {
+                console.error("Update Status Error", e);
+            }
         };
 
         window.deleteOrder = async (docId) => {
             if (!state.user) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
-            await deleteDoc(docRef);
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', docId);
+                await deleteDoc(docRef);
+            } catch (e) {
+                console.error("Delete Error", e);
+            }
+        };
+
+        // --- 列印功能 ---
+        window.printAll = () => {
+            state.printMode = 'all';
+            render();
+            setTimeout(() => window.print(), 500);
+        };
+
+        window.printSingle = (orderId) => {
+            state.printMode = 'single';
+            state.singlePrintTarget = state.orders.find(o => o.id === orderId);
+            render();
+            setTimeout(() => window.print(), 500);
         };
 
         // --- UI 組件 ---
@@ -127,121 +169,15 @@
                         <span class="text-xl font-bold tracking-wider">調度系統</span>
                         <span class="bg-orange-500 text-black text-xs px-2 py-0.5 rounded font-bold">${roleLabels[state.currentRole]}</span>
                     </div>
-                    <div class="flex gap-6 items-center">
+                    <div class="flex gap-4 items-center">
                         <button onclick="window.updateView({view: 'dashboard'})" class="${state.view === 'dashboard' ? 'text-orange-400 font-bold' : ''}">看板</button>
-                        ${state.currentRole === 'purchase' ? `<button onclick="window.updateView({view: 'newTask'})" class="bg-orange-500 text-black px-4 py-1.5 rounded-md font-bold hover:bg-orange-400 transition">新增單據</button>` : ''}
-                        <button onclick="window.updateView({currentRole: 'portal'})" class="text-gray-400 hover:text-white">登出</button>
+                        <button onclick="window.printAll()" class="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-bold flex items-center gap-2 hover:bg-blue-500">
+                            <i class="fas fa-print"></i> 批量列印
+                        </button>
+                        ${state.currentRole === 'purchase' ? `<button onclick="window.updateView({view: 'newTask'})" class="bg-orange-500 text-black px-4 py-1.5 rounded-md font-bold hover:bg-orange-400 transition">新增</button>` : ''}
+                        <button onclick="window.updateView({currentRole: 'portal'})" class="text-gray-400 hover:text-white"><i class="fas fa-sign-out-alt"></i></button>
                     </div>
                 </nav>
-            `;
-        }
-
-        function PortalView() {
-            return `
-                <div class="flex flex-col items-center justify-center min-h-screen p-4">
-                    <h1 class="text-4xl font-bold mb-2 tracking-tight">企業調度管理系統</h1>
-                    <p class="text-orange-400 mb-12 font-medium"><i class="fas fa-cloud mr-2"></i>雲端同步已就緒</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
-                        ${RoleCard('admin', 'fa-user-shield', '管理員')}
-                        ${RoleCard('purchase', 'fa-shopping-cart', '採購部')}
-                        ${RoleCard('logistics', 'fa-truck', '廠務部')}
-                        ${RoleCard('warehouse', 'fa-warehouse', '倉管部')}
-                    </div>
-                </div>
-            `;
-        }
-
-        function RoleCard(role, icon, label) {
-            return `
-                <div onclick="window.updateView({currentRole: '${role}', view: 'dashboard'})" 
-                     class="card-bg border-2 border-transparent hover:border-orange-500 cursor-pointer p-10 rounded-2xl flex flex-col items-center justify-center transition-all transform hover:-translate-y-1 shadow-xl">
-                    <i class="fas ${icon} text-4xl mb-4 ${role === 'admin' ? 'text-orange-400' : 'text-blue-400'}"></i>
-                    <span class="text-xl font-bold">${label}</span>
-                </div>
-            `;
-        }
-
-        function NewTaskView() {
-            return `
-                ${Navbar()}
-                <div class="max-w-2xl mx-auto mt-12 p-8 bg-white rounded-3xl text-gray-900 shadow-2xl">
-                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-2"><i class="fas fa-plus-circle text-orange-500"></i> 新增調度任務</h2>
-                    <form id="taskForm" onsubmit="handleTaskSubmit(event)">
-                        <div class="mb-4">
-                            <label class="block text-sm font-bold mb-1">任務類別</label>
-                            <select id="type" class="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-500">
-                                <option value="加工品">加工件 (需載回)</option>
-                                <option value="備品銷售">備品銷售 (直送客戶)</option>
-                            </select>
-                        </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-bold mb-1">對象名稱</label>
-                            <input id="target" required placeholder="例如：某某加工廠 或 某某客戶" class="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-orange-500">
-                        </div>
-                        <div id="itemsContainer" class="mb-4 space-y-2">
-                            <label class="block text-sm font-bold mb-1">品項明細</label>
-                            <div class="flex gap-2">
-                                <input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required>
-                                <input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required>
-                                <input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>
-                            </div>
-                        </div>
-                        <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6 inline-block hover:underline">+ 增加品項</button>
-                        <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition shadow-lg">發布任務至雲端</button>
-                    </form>
-                </div>
-            `;
-        }
-
-        function DashboardView() {
-            const sortedOrders = [...state.orders].sort((a, b) => b.timestamp - a.timestamp);
-            return `
-                ${Navbar()}
-                <div class="p-8 max-w-7xl mx-auto">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
-                        <div>
-                            <h2 class="text-2xl font-bold">全廠調度看板</h2>
-                            <p class="text-sm text-gray-400">所有單據即時同步中</p>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="window.printDeliveryList()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition flex items-center gap-2">
-                                <i class="fas fa-print"></i> 批量列印配送清單
-                            </button>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
-                        ${sortedOrders.length === 0 ? '<p class="col-span-full text-center py-20 text-gray-500">雲端暫無單據資料</p>' : sortedOrders.map(o => OrderCard(o)).join('')}
-                    </div>
-                    
-                    <!-- 列印專用區域 (預設隱藏) -->
-                    <div class="hidden print-area text-black bg-white p-8">
-                        <h1 class="text-3xl font-bold mb-2 text-center border-b-2 border-black pb-4">配送/載回 批量作業清單</h1>
-                        <p class="text-center mb-6">列印時間：${new Date().toLocaleString()}</p>
-                        <table class="w-full border-collapse border border-black">
-                            <thead>
-                                <tr class="bg-gray-100">
-                                    <th class="border border-black p-2">類別</th>
-                                    <th class="border border-black p-2">對象</th>
-                                    <th class="border border-black p-2">品項明細</th>
-                                    <th class="border border-black p-2">目前狀態</th>
-                                    <th class="border border-black p-2 w-24">簽收</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${state.orders.filter(o => o.status === '待執行' || o.status === '待載回').map(o => `
-                                    <tr>
-                                        <td class="border border-black p-2 text-center">${o.type}</td>
-                                        <td class="border border-black p-2 font-bold">${o.target}</td>
-                                        <td class="border border-black p-2 text-sm">${o.items.map(i => `${i.name}(${i.qty}${i.unit})`).join(', ')}</td>
-                                        <td class="border border-black p-2 text-center text-sm">${o.status}</td>
-                                        <td class="border border-black p-2"></td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        <p class="mt-4 text-sm italic">* 請配送人員確認無誤後回報系統 *</p>
-                    </div>
-                </div>
             `;
         }
 
@@ -250,25 +186,28 @@
             let actionButtons = '';
             
             if (state.currentRole === 'logistics') {
-                if (order.status === '待執行') actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold shadow-md">回報：已送達</button>`;
-                else if (order.status === '待載回') actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold shadow-md">回報：已載回廠內</button>`;
+                if (order.status === '待執行') actionButtons = `<button onclick="changeStatus('${order.id}', '${order.type === '加工品' ? '加工中' : '結案'}')" class="w-full mt-4 bg-blue-600 py-2 rounded-lg font-bold">回報：已送達</button>`;
+                else if (order.status === '待載回') actionButtons = `<button onclick="changeStatus('${order.id}', '待入庫')" class="w-full mt-4 bg-orange-600 py-2 rounded-lg font-bold">回報：已載回</button>`;
             } else if (state.currentRole === 'purchase' && order.status === '加工中') {
-                actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold shadow-md">工廠通知完工 (轉待載回)</button>`;
+                actionButtons = `<button onclick="changeStatus('${order.id}', '待載回')" class="w-full mt-4 bg-green-600 py-2 rounded-lg font-bold">確認完工</button>`;
             } else if (state.currentRole === 'warehouse' && order.status === '待入庫') {
-                actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold shadow-md">確認入庫並結案</button>`;
+                actionButtons = `<button onclick="changeStatus('${order.id}', '結案')" class="w-full mt-4 bg-green-700 py-2 rounded-lg font-bold">確認入庫</button>`;
             } else if (state.currentRole === 'admin') {
-                actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs opacity-60 hover:opacity-100 transition">刪除單據 (清理紀錄)</button>`;
+                actionButtons = `<button onclick="deleteOrder('${order.id}')" class="w-full mt-4 bg-red-900 py-2 rounded-lg font-bold text-xs opacity-60">刪除單據</button>`;
             }
 
             return `
-                <div class="card-bg p-6 rounded-2xl shadow-xl border border-gray-700 flex flex-col justify-between">
+                <div class="card-bg p-6 rounded-2xl shadow-xl border border-gray-700 flex flex-col justify-between relative group">
+                    <button title="列印此單" onclick="window.printSingle('${order.id}')" class="absolute top-4 right-16 text-gray-500 hover:text-white no-print">
+                        <i class="fas fa-print"></i>
+                    </button>
                     <div>
                         <div class="flex justify-between items-start mb-4">
-                            <span class="text-[10px] text-gray-500 font-mono">${order.id.substring(0, 12)}...</span>
-                            <span class="${statusColors[order.status]} status-badge font-bold shadow-sm">${order.status}</span>
+                            <span class="text-[10px] text-gray-500 font-mono">${order.id.substring(0, 8)}</span>
+                            <span class="${statusColors[order.status]} status-badge font-bold">${order.status}</span>
                         </div>
                         <div class="mb-4">
-                            <span class="text-xs text-orange-400 font-bold block mb-1 tracking-widest">${order.type.toUpperCase()}</span>
+                            <span class="text-xs text-orange-400 font-bold block mb-1">${order.type}</span>
                             <h3 class="text-xl font-bold">${order.target}</h3>
                         </div>
                         <div class="space-y-2 mb-4 text-sm text-gray-300 bg-slate-800/50 p-3 rounded-xl border border-gray-700">
@@ -276,57 +215,134 @@
                         </div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">建立於: ${order.createdAt}</div>
+                        <div class="text-[10px] text-gray-500 border-t border-gray-700 pt-3">建立: ${order.createdAt}</div>
                         ${actionButtons}
                     </div>
                 </div>
             `;
         }
 
-        // --- 全局控制函數 ---
-        window.updateView = (params) => {
-            state = { ...state, ...params };
-            render();
-        };
+        function PrintView() {
+            const printOrders = state.printMode === 'all' 
+                ? state.orders.filter(o => o.status !== '結案') 
+                : (state.singlePrintTarget ? [state.singlePrintTarget] : []);
 
+            return `
+                <div class="print-area p-8 text-black bg-white">
+                    <h1 class="text-2xl font-bold mb-2 text-center border-b-2 border-black pb-2">企業調度配送清單</h1>
+                    <p class="text-right text-sm mb-4">列印日期：${new Date().toLocaleString()}</p>
+                    <table class="w-full border-collapse border border-black">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="border border-black p-2">類別</th>
+                                <th class="border border-black p-2">對象</th>
+                                <th class="border border-black p-2">品項明細</th>
+                                <th class="border border-black p-2">狀態</th>
+                                <th class="border border-black p-2 w-32">簽名</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${printOrders.map(o => `
+                                <tr>
+                                    <td class="border border-black p-2 text-center">${o.type}</td>
+                                    <td class="border border-black p-2 font-bold">${o.target}</td>
+                                    <td class="border border-black p-2 text-sm">${o.items.map(i => `${i.name}(${i.qty}${i.unit})`).join(', ')}</td>
+                                    <td class="border border-black p-2 text-center">${o.status}</td>
+                                    <td class="border border-black p-2"></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-8 grid grid-cols-2 text-sm">
+                        <p>配送人員簽章：________________</p>
+                        <p>核對人員簽章：________________</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- 全局控制 ---
+        window.updateView = (params) => { state = { ...state, ...params }; render(); };
         window.addItemRow = () => {
-            const container = document.getElementById('itemsContainer');
             const div = document.createElement('div');
             div.className = 'flex gap-2';
-            div.innerHTML = `<input placeholder="品項名稱" class="flex-grow p-3 border rounded-xl bg-gray-50" required><input placeholder="數量" class="w-20 p-3 border rounded-xl bg-gray-50" required><input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>`;
-            container.appendChild(div);
+            div.innerHTML = `<input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required><input placeholder="量" class="w-20 p-3 border rounded-xl bg-gray-50" required><input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required>`;
+            document.getElementById('itemsContainer').appendChild(div);
         };
 
         window.handleTaskSubmit = async (e) => {
             e.preventDefault();
-            const type = document.getElementById('type').value;
-            const target = document.getElementById('target').value;
-            const rows = document.getElementById('itemsContainer').querySelectorAll('div.flex');
-            const items = Array.from(rows).map(row => {
+            const items = Array.from(document.getElementById('itemsContainer').querySelectorAll('div.flex')).map(row => {
                 const inputs = row.querySelectorAll('input');
                 return { name: inputs[0].value, qty: inputs[1].value, unit: inputs[2].value };
             });
-            await window.addOrder({ type, target, items });
-        };
-
-        window.printDeliveryList = () => {
-            window.print();
+            await window.addOrder({ 
+                type: document.getElementById('type').value, 
+                target: document.getElementById('target').value, 
+                items 
+            });
         };
 
         function render() {
             const app = document.getElementById('app');
+            
+            // 載入中狀態
+            if (!state.user && state.currentRole !== 'portal') {
+                app.innerHTML = `
+                    <div class="flex items-center justify-center min-h-screen">
+                        <div class="text-center">
+                            <i class="fas fa-spinner fa-spin text-4xl mb-4 text-orange-500"></i>
+                            <p>雲端系統同步中...</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
             if (state.currentRole === 'portal') {
-                app.innerHTML = PortalView();
+                app.innerHTML = `
+                    <div class="flex flex-col items-center justify-center min-h-screen p-4 no-print text-center">
+                        <h1 class="text-4xl font-bold mb-2">企業調度管理系統</h1>
+                        <p class="text-orange-400 mb-12 font-medium">即時雲端同步平台</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
+                            ${['admin', 'purchase', 'logistics', 'warehouse'].map(r => `
+                                <div onclick="window.updateView({currentRole: '${r}', view: 'dashboard'})" class="card-bg border-2 border-transparent hover:border-orange-500 cursor-pointer p-10 rounded-2xl flex flex-col items-center shadow-xl transition-all">
+                                    <i class="fas ${r === 'admin' ? 'fa-user-shield' : r === 'purchase' ? 'fa-shopping-cart' : r === 'logistics' ? 'fa-truck' : 'fa-warehouse'} text-4xl mb-4 text-blue-400"></i>
+                                    <span class="text-xl font-bold">${r === 'admin' ? '管理員' : r === 'purchase' ? '採購部' : r === 'logistics' ? '廠務部' : '倉管部'}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-8 text-gray-600 text-[10px] font-mono">${state.user ? `Cloud ID: ${state.user.uid}` : 'Connecting...'}</div>
+                    </div>
+                `;
             } else if (state.view === 'newTask') {
-                app.innerHTML = NewTaskView();
+                app.innerHTML = Navbar() + `
+                    <div class="max-w-2xl mx-auto mt-12 p-8 bg-white rounded-3xl text-gray-900 shadow-2xl no-print">
+                        <h2 class="text-2xl font-bold mb-6">新增調度任務</h2>
+                        <form onsubmit="handleTaskSubmit(event)">
+                            <div class="mb-4"><label class="block text-sm font-bold mb-1">類別</label><select id="type" class="w-full p-3 border rounded-xl bg-gray-50"><option value="加工品">加工件</option><option value="備品銷售">銷售直送</option></select></div>
+                            <div class="mb-4"><label class="block text-sm font-bold mb-1">對象</label><input id="target" required class="w-full p-3 border rounded-xl bg-gray-50"></div>
+                            <div id="itemsContainer" class="mb-4 space-y-2"><label class="block text-sm font-bold mb-1">明細</label><div class="flex gap-2"><input placeholder="品項" class="flex-grow p-3 border rounded-xl bg-gray-50" required><input placeholder="量" class="w-20 p-3 border rounded-xl bg-gray-50" required><input placeholder="單位" class="w-20 p-3 border rounded-xl bg-gray-50" required></div></div>
+                            <button type="button" onclick="addItemRow()" class="text-blue-600 font-bold text-sm mb-6">+ 增加品項</button>
+                            <button type="submit" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold">同步發布至雲端</button>
+                        </form>
+                    </div>
+                `;
             } else {
-                app.innerHTML = DashboardView();
+                const sortedOrders = [...state.orders].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                app.innerHTML = Navbar() + `
+                    <div class="p-8 max-w-7xl mx-auto no-print">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            ${sortedOrders.length === 0 ? '<div class="col-span-full py-20 text-center text-gray-500">尚無調度單據資料</div>' : sortedOrders.map(o => OrderCard(o)).join('')}
+                        </div>
+                    </div>
+                    ${PrintView()}
+                `;
             }
         }
 
-        // 初始啟動身份驗證
-        initAuth();
-
+        // 啟動
+        initApp();
     </script>
 </body>
 </html>
