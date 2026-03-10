@@ -3,471 +3,261 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業調度管理系統 - 倉管入庫版</title>
+    <title>企業調度管理系統 - 穩定版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        
-        @media print {
-            body * { visibility: hidden; }
-            #printSection, #printSection * { visibility: visible; }
-            #printSection { position: absolute; left: 0; top: 0; width: 100%; }
-            .no-print { display: none !important; }
-        }
-
         .tab-active { border-bottom: 4px solid #0f172a; color: #0f172a; font-weight: 900; }
-        .badge-pop { animation: pop 0.3s ease-out; }
-        @keyframes pop {
-            0% { transform: scale(0.5); }
-            100% { transform: scale(1); }
-        }
-        
         .sync-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="min-h-screen">
 
+    <!-- 錯誤提示遮罩 (預設隱藏) -->
+    <div id="errorOverlay" class="hidden fixed inset-0 bg-red-600/90 z-[200] flex items-center justify-center p-6 text-white text-center">
+        <div>
+            <i class="fas fa-exclamation-triangle text-6xl mb-4"></i>
+            <h2 class="text-2xl font-bold mb-2">Firebase 連線失敗</h2>
+            <p id="errorMsg" class="mb-6 opacity-90">請確認您已正確填寫 Firebase 設定資訊。</p>
+            <button onclick="location.reload()" class="bg-white text-red-600 px-6 py-2 rounded-full font-bold">重新整理</button>
+        </div>
+    </div>
+
     <!-- 登入介面 -->
     <div id="loginOverlay" class="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center p-4">
-        <div class="max-w-5xl w-full">
-            <div class="text-center mb-12">
-                <h1 class="text-4xl font-black text-white mb-4 tracking-widest">企業調度管理系統</h1>
-                <p class="text-slate-400 font-medium">請選擇您的所屬身分以同步雲端資料</p>
-                <p id="authStatus" class="text-amber-500 text-xs mt-2 font-bold">連線中...</p>
-            </div>
+        <div class="max-w-5xl w-full text-center">
+            <h1 class="text-4xl font-black text-white mb-4 tracking-widest">企業調度管理系統</h1>
+            <p id="statusMsg" class="text-amber-500 font-bold mb-12">正在初始化雲端系統...</p>
+            
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <button onclick="login('管理員')" class="bg-slate-800 border-2 border-amber-500/30 p-8 rounded-3xl shadow-2xl text-center group hover:-translate-y-2 hover:bg-slate-700 transition-all">
-                    <div class="w-20 h-20 bg-amber-500 text-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                        <i class="fas fa-user-shield text-3xl"></i>
-                    </div>
-                    <h2 class="text-xl font-bold text-white">管理員</h2>
-                    <p class="text-amber-500/60 text-[10px] mt-2 font-bold">系統全權限</p>
+                <button onclick="login('管理員')" class="bg-slate-800 border border-amber-500/50 p-8 rounded-3xl text-white hover:bg-slate-700 transition-all">
+                    <i class="fas fa-user-shield text-3xl mb-4 text-amber-500"></i>
+                    <div class="font-bold">管理員</div>
                 </button>
-                <button onclick="login('採購')" class="bg-white p-8 rounded-3xl shadow-2xl text-center group hover:-translate-y-2 transition-all">
-                    <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                        <i class="fas fa-shopping-cart text-3xl"></i>
-                    </div>
-                    <h2 class="text-xl font-bold text-slate-800">採購部</h2>
+                <button onclick="login('採購')" class="bg-white p-8 rounded-3xl text-slate-800 hover:shadow-xl transition-all">
+                    <i class="fas fa-shopping-cart text-3xl mb-4 text-amber-600"></i>
+                    <div class="font-bold">採購部</div>
                 </button>
-                <button onclick="login('廠務')" class="bg-white p-8 rounded-3xl shadow-2xl text-center group hover:-translate-y-2 transition-all">
-                    <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                        <i class="fas fa-truck text-3xl"></i>
-                    </div>
-                    <h2 class="text-xl font-bold text-slate-800">廠務部</h2>
+                <button onclick="login('廠務')" class="bg-white p-8 rounded-3xl text-slate-800 hover:shadow-xl transition-all">
+                    <i class="fas fa-truck text-3xl mb-4 text-blue-600"></i>
+                    <div class="font-bold">廠務部</div>
                 </button>
-                <button onclick="login('倉管')" class="bg-white p-8 rounded-3xl shadow-2xl text-center group hover:-translate-y-2 transition-all">
-                    <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                        <i class="fas fa-warehouse text-3xl"></i>
-                    </div>
-                    <h2 class="text-xl font-bold text-slate-800">倉管部</h2>
+                <button onclick="login('倉管')" class="bg-white p-8 rounded-3xl text-slate-800 hover:shadow-xl transition-all">
+                    <i class="fas fa-warehouse text-3xl mb-4 text-emerald-600"></i>
+                    <div class="font-bold">倉管部</div>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- 主程式介面 -->
+    <!-- 主程式內容 -->
     <div id="mainApp" class="hidden">
-        <nav class="bg-slate-900 text-white shadow-xl sticky top-0 z-50">
-            <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <span class="font-black text-xl tracking-tighter border-l-4 border-amber-500 pl-3">調度系統 <span class="text-amber-500">Cloud</span></span>
-                    <span id="userBadge" class="px-3 py-1 rounded-full text-[10px] font-bold uppercase"></span>
-                </div>
-                <div class="flex items-center gap-4 md:gap-6">
-                    <button id="syncBtn" onclick="syncDataFromCloud()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl transition-all border border-slate-700">
-                        <i id="syncIcon" class="fas fa-cloud-download-alt text-amber-400"></i>
-                        <span class="text-[10px] font-bold hidden md:inline">雲端同步</span>
-                    </button>
-                    
-                    <div class="relative no-print">
-                        <button onclick="showPanel('board')" class="hover:text-amber-400 font-bold text-sm">看板</button>
-                        <span id="globalNotif" class="hidden absolute -top-2 -right-4 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-slate-900 badge-pop">0</span>
-                    </div>
-                    <button id="navCreate" onclick="showPanel('create')" class="hover:text-amber-400 font-bold text-sm hidden">新增單據</button>
-                    <button onclick="logout()" class="text-slate-400 hover:text-white text-sm font-bold border-l border-slate-700 pl-4">登出</button>
-                </div>
+        <nav class="bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50">
+            <div class="font-black text-xl">調度系統 <span id="userBadge" class="text-xs bg-amber-500 text-black px-2 py-0.5 rounded ml-2"></span></div>
+            <div class="flex gap-4 items-center">
+                <button onclick="showPanel('board')" class="text-sm font-bold">看板</button>
+                <button id="navCreate" onclick="showPanel('create')" class="hidden text-sm font-bold bg-amber-500 text-black px-3 py-1 rounded">新增單據</button>
+                <button onclick="location.reload()" class="text-xs opacity-50">登出</button>
             </div>
         </nav>
 
-        <main class="max-w-7xl mx-auto py-8 px-4">
-            <!-- 新增面板 -->
-            <div id="createPanel" class="hidden max-w-4xl mx-auto">
-                <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-                    <div class="bg-slate-900 p-6 text-white flex justify-between items-center">
-                        <h2 class="text-xl font-black flex items-center gap-2"><i class="fas fa-file-invoice text-amber-500"></i> 建立新調度任務</h2>
-                        <button onclick="showPanel('board')" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="p-8 space-y-8">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div>
-                                <label class="block text-sm font-black text-slate-700 mb-2 uppercase tracking-widest">任務類型</label>
-                                <select id="taskType" class="w-full rounded-2xl border-slate-200 border p-4 text-lg focus:ring-4 focus:ring-amber-100 outline-none transition-all">
-                                    <option value="加工件">加工件 (需載出至加工廠)</option>
-                                    <option value="銷售">銷售 (直接出貨給客戶)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-black text-slate-700 mb-2 uppercase tracking-widest">對象廠商 / 客戶</label>
-                                <input type="text" id="targetName" class="w-full rounded-2xl border-slate-200 border p-4 text-lg focus:ring-4 focus:ring-amber-100 outline-none transition-all" placeholder="請輸入名稱...">
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-50 p-6 rounded-3xl border border-slate-200">
-                            <h3 class="text-sm font-black text-slate-500 mb-4 flex justify-between items-center">
-                                品項清單明細 
-                                <button onclick="addInputRow()" class="text-amber-600 hover:text-amber-700 text-xs font-bold">+ 新增一行</button>
-                            </h3>
-                            <div id="itemListInput" class="space-y-3">
-                                <div class="flex gap-3 item-row bg-white p-3 rounded-xl shadow-sm">
-                                    <input type="text" class="item-name flex-1 p-2 border-none focus:ring-0 text-base" placeholder="品項名稱...">
-                                    <input type="number" class="item-qty w-24 p-2 border-l border-slate-100 focus:ring-0 text-center font-bold" placeholder="數量">
-                                    <input type="text" class="item-unit w-20 p-2 border-l border-slate-100 focus:ring-0 text-center" placeholder="單位" value="件">
-                                    <div class="w-8"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <button id="submitBtn" onclick="createNewTask()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xl shadow-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-4">
-                            儲存並同步至雲端 <i class="fas fa-cloud-upload-alt"></i>
-                        </button>
-                    </div>
+        <main class="max-w-7xl mx-auto p-4">
+            <!-- 看板標籤 -->
+            <div id="boardPanel">
+                <div class="flex gap-2 overflow-x-auto mb-6 border-b border-slate-200">
+                    <button onclick="setTab(0)" id="tab-0" class="px-4 py-3 text-sm whitespace-nowrap">待出貨</button>
+                    <button onclick="setTab(1)" id="tab-1" class="px-4 py-3 text-sm whitespace-nowrap">進行中</button>
+                    <button onclick="setTab(2)" id="tab-2" class="px-4 py-3 text-sm whitespace-nowrap">待回廠</button>
+                    <button onclick="setTab(3)" id="tab-3" class="px-4 py-3 text-sm whitespace-nowrap font-bold text-emerald-600">待入庫</button>
+                    <button onclick="setTab(4)" id="tab-4" class="px-4 py-3 text-sm whitespace-nowrap">已結案</button>
                 </div>
+                <div id="taskBoard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
             </div>
 
-            <!-- 看板 -->
-            <div id="boardPanel">
-                <div class="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-px overflow-x-auto no-print">
-                    <button onclick="setTab(0)" id="tab-0" class="px-6 py-4 text-sm text-slate-400 transition-all flex items-center gap-2">
-                        待出貨 / 待加工 <span id="badge-0" class="hidden bg-red-100 text-red-600 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
-                    </button>
-                    <button onclick="setTab(1)" id="tab-1" class="px-6 py-4 text-sm text-slate-400 transition-all flex items-center gap-2">
-                        加工中 / 已出貨 <span id="badge-1" class="hidden bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
-                    </button>
-                    <button onclick="setTab(2)" id="tab-2" class="px-6 py-4 text-sm text-slate-400 transition-all flex items-center gap-2">
-                        待回廠 <span id="badge-2" class="hidden bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
-                    </button>
-                    <button onclick="setTab(3)" id="tab-3" class="px-6 py-4 text-sm text-slate-400 transition-all flex items-center gap-2">
-                        待入庫 (倉管) <span id="badge-3" class="hidden bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full text-[10px] font-bold">0</span>
-                    </button>
-                    <button onclick="setTab(4)" id="tab-4" class="px-6 py-4 text-sm text-slate-400 transition-all flex items-center gap-2">
-                        已入庫紀錄
-                    </button>
-                </div>
-
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                    <div class="flex items-center gap-4">
-                        <h3 id="tabTitle" class="text-2xl font-black text-slate-800 tracking-tight">已入庫紀錄</h3>
-                        <span id="syncStatus" class="text-[10px] bg-slate-100 text-slate-400 px-2 py-1 rounded-md font-bold uppercase">Connecting...</span>
+            <!-- 新增單據 -->
+            <div id="createPanel" class="hidden max-w-lg mx-auto bg-white p-6 rounded-3xl shadow-lg">
+                <h2 class="text-xl font-bold mb-4">新增調度任務</h2>
+                <div class="space-y-4">
+                    <select id="taskType" class="w-full p-3 border rounded-xl">
+                        <option value="加工件">加工件 (需載回)</option>
+                        <option value="銷售">銷售 (不需載回)</option>
+                    </select>
+                    <input type="text" id="targetName" placeholder="對象名稱" class="w-full p-3 border rounded-xl">
+                    <div id="itemListInput" class="space-y-2">
+                        <div class="flex gap-2">
+                            <input type="text" class="item-name flex-1 p-2 border rounded-lg" placeholder="品項">
+                            <input type="number" class="item-qty w-20 p-2 border rounded-lg" placeholder="量">
+                        </div>
                     </div>
-                    <div class="relative w-full md:w-80 no-print">
-                        <i class="fas fa-search absolute left-4 top-3.5 text-slate-400"></i>
-                        <input type="text" id="searchInput" onkeyup="search()" class="w-full pl-12 pr-4 py-3 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-slate-300 outline-none" placeholder="搜尋對象或品項...">
-                    </div>
-                </div>
-
-                <div id="taskBoard" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    <!-- 卡片 -->
+                    <button onclick="addInputRow()" class="text-sm text-blue-600">+ 增加品項</button>
+                    <button onclick="createNewTask()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold">送出並儲存</button>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- 列印 -->
-    <div id="printSection" class="hidden p-8">
-        <div class="border-b-4 border-black pb-4 mb-8">
-            <h1 class="text-3xl font-black">企業調度派車任務單 (雲端同步存檔)</h1>
-            <p id="printTime" class="text-sm mt-2"></p>
-        </div>
-        <div id="printContent"></div>
-    </div>
-
-    <div id="toast" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl opacity-0 transition-all z-[200] pointer-events-none font-bold text-sm"></div>
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-2 rounded-full opacity-0 transition-all"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // --- Firebase 配置區 ---
+        let config;
+        try {
+            // 如果是在我的環境中執行，會自動抓取金鑰
+            config = JSON.parse(__firebase_config);
+        } catch (e) {
+            // 如果是在 GitHub，請在此替換為你自己的 Firebase Config
+            config = {
+                apiKey: "填入你的API_KEY",
+                authDomain: "你的專案.firebaseapp.com",
+                projectId: "你的專案ID",
+                storageBucket: "你的專案.appspot.com",
+                messagingSenderId: "你的傳送者ID",
+                appId: "你的APP_ID"
+            };
+        }
+
+        let db, auth;
+        try {
+            const app = initializeApp(config);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (err) {
+            document.getElementById('errorOverlay').classList.remove('hidden');
+            document.getElementById('errorMsg').innerText = err.message;
+        }
 
         let currentUserDept = null;
-        let activeTab = 4; // 預設顯示已入庫紀錄
+        let activeTab = 0;
         let tasks = [];
-        let user = null;
-        let snapshotUnsubscribe = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-task-app';
 
-        const tasksCollection = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
-
-        async function initAuth() {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) { console.error(err); }
-        }
-
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (u && currentUserDept) startRealtimeSync();
+        // 監聽登入狀態
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('statusMsg').innerText = "雲端連線成功，請選擇部門";
+            } else {
+                signInAnonymously(auth).catch(e => {
+                    document.getElementById('errorOverlay').classList.remove('hidden');
+                    document.getElementById('errorMsg').innerText = "無法進行匿名登入，請檢查 Firebase 權限設定。";
+                });
+            }
         });
 
-        function startRealtimeSync() {
-            if (!user) return;
-            if (snapshotUnsubscribe) snapshotUnsubscribe();
-            snapshotUnsubscribe = onSnapshot(tasksCollection, (snapshot) => {
-                tasks = snapshot.docs.map(doc => doc.data());
-                tasks.sort((a, b) => b.id - a.id);
-                updateGlobalNotif();
-                render();
-            }, (error) => console.error(error));
-        }
-
-        window.login = async function(dept) {
-            if (!user) { await initAuth(); }
+        window.login = (dept) => {
             currentUserDept = dept;
-            const badge = document.getElementById('userBadge');
             document.getElementById('loginOverlay').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('userBadge').innerText = dept;
+            if(dept === '管理員' || dept === '採購') document.getElementById('navCreate').classList.remove('hidden');
             
-            if (dept === '管理員') {
-                badge.innerText = "ADMIN";
-                badge.className = "bg-amber-500 px-3 py-1 rounded-full text-[10px] font-black text-slate-900 uppercase";
-                document.getElementById('navCreate').classList.remove('hidden');
-            } else {
-                badge.innerText = `部門：${dept}`;
-                badge.className = "bg-slate-700 px-3 py-1 rounded-full text-[10px] font-bold text-amber-400 uppercase";
-                if(dept === '採購') document.getElementById('navCreate').classList.remove('hidden');
-            }
-            
-            startRealtimeSync();
-            autoNavigate();
+            // 開始監聽資料 (使用公共路徑)
+            const q = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+            onSnapshot(q, (snapshot) => {
+                tasks = snapshot.docs.map(doc => ({...doc.data(), docId: doc.id}));
+                tasks.sort((a,b) => b.id - a.id);
+                render();
+            }, (err) => {
+                alert("Firestore 讀取失敗: " + err.message);
+            });
         };
-
-        function autoNavigate() {
-            if (currentUserDept === '倉管') { setTab(3); return; }
-            if (currentUserDept === '廠務') { setTab(0); return; }
-            if (currentUserDept === '採購') { setTab(1); return; }
-            setTab(4); 
-        }
-
-        window.logout = () => location.reload();
 
         window.showPanel = (id) => {
-            document.getElementById('createPanel').classList.toggle('hidden', id !== 'create');
             document.getElementById('boardPanel').classList.toggle('hidden', id !== 'board');
-            if(id === 'board') render();
+            document.getElementById('createPanel').classList.toggle('hidden', id !== 'create');
         };
 
-        window.setTab = (index) => {
-            activeTab = index;
-            const labels = ['待出貨 / 待加工', '加工中 / 已出貨', '待回廠', '待入庫 (倉管)', '已入庫紀錄'];
-            document.getElementById('tabTitle').innerText = labels[index];
+        window.setTab = (idx) => {
+            activeTab = idx;
             for(let i=0; i<5; i++) {
-                const btn = document.getElementById(`tab-${i}`);
-                if(btn) btn.classList.toggle('tab-active', i === index);
+                document.getElementById(`tab-${i}`).classList.toggle('tab-active', i === idx);
             }
             render();
         };
 
         window.addInputRow = () => {
-            const container = document.getElementById('itemListInput');
             const div = document.createElement('div');
-            div.className = 'flex gap-3 item-row bg-white p-3 rounded-xl shadow-sm';
-            div.innerHTML = `
-                <input type="text" class="item-name flex-1 p-2 border-none focus:ring-0 text-base" placeholder="品項名稱...">
-                <input type="number" class="item-qty w-24 p-2 border-l border-slate-100 focus:ring-0 text-center font-bold" placeholder="數量">
-                <input type="text" class="item-unit w-20 p-2 border-l border-slate-100 focus:ring-0 text-center" placeholder="單位" value="件">
-                <button onclick="this.parentElement.remove()" class="text-red-300 hover:text-red-500 px-2"><i class="fas fa-trash"></i></button>
-            `;
-            container.appendChild(div);
+            div.className = 'flex gap-2';
+            div.innerHTML = `<input type="text" class="item-name flex-1 p-2 border rounded-lg" placeholder="品項"><input type="number" class="item-qty w-20 p-2 border rounded-lg" placeholder="量">`;
+            document.getElementById('itemListInput').appendChild(div);
         };
 
-        window.createNewTask = async function() {
-            if (!user) return;
+        window.createNewTask = async () => {
             const target = document.getElementById('targetName').value;
-            const type = document.getElementById('taskType').value;
-            const itemRows = document.querySelectorAll('.item-row');
-            let subItems = [];
-            itemRows.forEach(row => {
-                const n = row.querySelector('.item-name').value;
-                const q = row.querySelector('.item-qty').value;
-                const u = row.querySelector('.item-unit').value;
-                if(n && q) subItems.push({ name: n, qty: q, unit: u });
-            });
-            if(!target || subItems.length === 0) { showToast('❌ 請填寫內容'); return; }
+            if(!target) return alert("請輸入對象名稱");
+            const items = Array.from(document.querySelectorAll('#itemListInput > div')).map(row => ({
+                name: row.querySelector('.item-name').value,
+                qty: row.querySelector('.item-qty').value
+            })).filter(i => i.name);
 
-            const newTask = {
-                id: Date.now(),
-                type: type,
-                target: target,
-                items: subItems,
+            const id = Date.now();
+            const data = {
+                id,
+                target,
+                items,
+                type: document.getElementById('taskType').value,
                 stage: 0,
                 createdAt: new Date().toLocaleString()
             };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(newTask.id)), newTask);
-                showToast('✅ 雲端儲存成功');
-                showPanel('board');
-            } catch (err) { showToast('❌ 儲存失敗'); }
-        };
-
-        window.nextStage = async function(taskId) {
-            if (!user) return;
-            const task = tasks.find(t => t.id === taskId);
-            if(!task || !checkDuty(task)) return;
-
-            let nextStageVal = task.stage;
-            // 邏輯修正：銷售件在 Stage 1 (已出貨) 之後直接去 Stage 3 (待入庫)
-            if (task.type === '銷售' && task.stage === 1) nextStageVal = 3;
-            else nextStageVal++;
-
-            try {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(taskId)), { 
-                    stage: nextStageVal,
-                    completedAt: nextStageVal === 4 ? new Date().toLocaleString() : null
-                });
-                showToast('🚀 狀態已更新');
-            } catch (err) { showToast('❌ 更新失敗'); }
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id)), data);
+            showPanel('board');
+            showToast("已建立任務");
         };
 
         function checkDuty(task) {
             if (currentUserDept === '管理員') return true;
-            // Stage 0: 廠務 (負責出貨)
             if (task.stage === 0 && currentUserDept === '廠務') return true;
-            // Stage 1: 加工件-採購 / 銷售件-廠務
-            if (task.stage === 1) {
-                if (task.type === '加工件' && currentUserDept === '採購') return true;
-                if (task.type === '銷售' && currentUserDept === '廠務') return true;
-            }
-            // Stage 2: 加工件回廠-廠務
+            if (task.stage === 1) return (task.type === '加工件' ? currentUserDept === '採購' : currentUserDept === '廠務');
             if (task.stage === 2 && currentUserDept === '廠務') return true;
-            // Stage 3: 入庫確認-倉管
             if (task.stage === 3 && currentUserDept === '倉管') return true;
             return false;
         }
 
-        function updateGlobalNotif() {
-            let totalMyWork = 0;
-            const counts = [0, 0, 0, 0, 0];
-            tasks.forEach(t => {
-                counts[t.stage]++;
-                if (checkDuty(t)) totalMyWork++;
-            });
-            for(let i=0; i<4; i++) {
-                const b = document.getElementById(`badge-${i}`);
-                if(b) {
-                    if(counts[i] > 0) { b.innerText = counts[i]; b.classList.remove('hidden'); }
-                    else { b.classList.add('hidden'); }
-                }
-            }
-            const dot = document.getElementById('globalNotif');
-            if(totalMyWork > 0) { dot.innerText = totalMyWork; dot.classList.remove('hidden'); }
-            else { dot.classList.add('hidden'); }
-        }
+        window.nextStep = async (id) => {
+            const task = tasks.find(t => t.id === id);
+            if(!checkDuty(task)) return;
+            let next = task.stage + 1;
+            if(task.type === '銷售' && task.stage === 1) next = 3; // 銷售直接跳待入庫
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id)), { stage: next });
+        };
 
-        window.render = (dataToRender = null) => {
+        window.render = () => {
             const board = document.getElementById('taskBoard');
             board.innerHTML = '';
-            const displayData = dataToRender || tasks.filter(t => t.stage === activeTab);
-
-            if(displayData.length === 0) {
-                board.innerHTML = `<div class="col-span-full py-20 text-center text-slate-300 font-bold">目前無單據</div>`;
-                return;
-            }
-
-            displayData.forEach(task => {
-                const isMyDuty = checkDuty(task);
-                const itemsHtml = task.items.map(i => `
-                    <div class="flex justify-between py-1.5 text-sm border-b border-slate-50 last:border-0">
-                        <span class="text-slate-600">${i.name}</span>
-                        <span class="font-black text-slate-900">${i.qty} ${i.unit}</span>
-                    </div>
-                `).join('');
-
+            const filtered = tasks.filter(t => t.stage === activeTab);
+            
+            filtered.forEach(t => {
+                const canAct = checkDuty(t) && t.stage < 4;
                 const card = document.createElement('div');
-                card.className = `bg-white rounded-[2rem] shadow-sm border p-6 flex flex-col hover:shadow-xl transition-all ${isMyDuty ? 'ring-2 ring-emerald-500 ring-offset-4 border-emerald-200' : 'border-slate-200'}`;
-                
-                const btnLabel = (task.stage === 4) ? null : 
-                                 (task.stage === 0) ? '確認出貨 / 載出' :
-                                 (task.stage === 1) ? (task.type === '銷售' ? '送達客戶' : '加工完成') :
-                                 (task.stage === 2) ? '載回公司' : '點收無誤並入庫';
-
-                const canDelete = currentUserDept === '管理員' || currentUserDept === '採購';
-
+                card.className = "bg-white p-5 rounded-2xl shadow-sm border";
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-[10px] font-black px-3 py-1 rounded-full ${task.type === '加工件' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}">
-                            ${task.type}
-                        </span>
-                        <div class="flex gap-3">
-                            <button onclick="printTask(${task.id})" class="text-slate-400 hover:text-slate-800"><i class="fas fa-print"></i></button>
-                            ${canDelete ? `<button onclick="deleteTask(${task.id})" class="text-slate-200 hover:text-red-500"><i class="fas fa-trash-alt"></i></button>` : ''}
-                        </div>
+                    <div class="text-xs text-slate-400 mb-2">單號: ${t.id} | ${t.type}</div>
+                    <div class="text-lg font-bold mb-3">${t.target}</div>
+                    <div class="space-y-1 mb-4">
+                        ${t.items.map(i => `<div class="flex justify-between text-sm"><span>${i.name}</span><b>${i.qty}</b></div>`).join('')}
                     </div>
-                    <h4 class="text-xl font-black text-slate-800 mb-1">${task.target}</h4>
-                    <p class="text-[10px] text-slate-400 mb-4">單號: ${task.id}</p>
-                    <div class="bg-slate-50 rounded-2xl p-4 mb-6 max-h-40 overflow-y-auto custom-scroll">${itemsHtml}</div>
-                    <div class="mt-auto">
-                        ${btnLabel ? `
-                            <button onclick="nextStage(${task.id})" class="w-full py-4 rounded-2xl font-black text-sm transition shadow-lg flex items-center justify-center gap-2
-                                ${isMyDuty ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}">
-                                ${isMyDuty ? btnLabel : '等待他部處理'} <i class="fas fa-chevron-right text-[10px]"></i>
-                            </button>
-                        ` : `
-                            <div class="text-center text-emerald-600 font-black py-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                <i class="fas fa-check-circle mr-1"></i> 已入庫存檔
-                                <p class="text-[9px] text-emerald-500 mt-1">${task.completedAt || ''}</p>
-                            </div>
-                        `}
-                    </div>
+                    ${t.stage < 4 ? `
+                        <button onclick="nextStep(${t.id})" class="w-full py-2 rounded-lg font-bold ${canAct ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-300'}" ${!canAct ? 'disabled' : ''}>
+                            ${canAct ? '執行下一階段' : '等待處理'}
+                        </button>
+                    ` : '<div class="text-center text-emerald-600 font-bold">已入庫完成</div>'}
                 `;
                 board.appendChild(card);
             });
         };
 
-        window.deleteTask = async (id) => {
-            if(!confirm('確定刪除？')) return;
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id)));
-        };
-
-        window.printTask = (taskId) => {
-            const task = tasks.find(t => t.id === taskId);
-            const printContent = document.getElementById('printContent');
-            document.getElementById('printTime').innerText = `列印：${new Date().toLocaleString()} | 單號：${task.id}`;
-            printContent.innerHTML = `
-                <div class="mb-8 text-xl">對象：<b>${task.target}</b> (${task.type})</div>
-                <table class="w-full border-collapse border-2 border-black">
-                    <tr class="bg-slate-100"><th class="border-2 border-black p-4 text-left">品項</th><th class="border-2 border-black p-4 text-center">數量</th><th class="border-2 border-black p-4">簽收備註</th></tr>
-                    ${task.items.map(i => `<tr><td class="border-2 border-black p-4 font-bold">${i.name}</td><td class="border-2 border-black p-4 text-center">${i.qty} ${i.unit}</td><td class="border-2 border-black p-4"></td></tr>`).join('')}
-                </table>
-            `;
-            window.print();
-        };
-
-        function showToast(msg) {
+        function showToast(m) {
             const t = document.getElementById('toast');
-            t.innerText = msg; t.style.opacity = '1';
-            setTimeout(() => t.style.opacity = '0', 3000);
+            t.innerText = m; t.style.opacity = 1;
+            setTimeout(() => t.style.opacity = 0, 2000);
         }
-
-        window.search = () => {
-            const q = document.getElementById('searchInput').value.toLowerCase();
-            render(tasks.filter(t => t.stage === activeTab && (t.target.toLowerCase().includes(q) || t.items.some(i => i.name.toLowerCase().includes(q)))));
-        };
-
-        initAuth();
     </script>
 </body>
 </html>
