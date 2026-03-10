@@ -32,6 +32,10 @@
         .animate-fade-in {
             animation: fadeIn 0.3s ease-out forwards;
         }
+        /* 避免在移動端出現水平滾動 */
+        html, body {
+            overflow-x: hidden;
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -39,13 +43,13 @@
     <!-- 頁面 1: 部門選擇頁面 -->
     <div id="selectionPage" class="flex flex-col items-center justify-center min-h-screen px-4">
         <h1 class="text-3xl md:text-4xl font-bold mb-2">企業調度管理系統</h1>
-        <p class="text-orange-400 font-medium mb-12">雲端連線成功，請選擇部門</p>
+        <p class="text-orange-400 font-medium mb-12 text-center">雲端連線成功，請選擇部門</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
             <!-- 管理員卡片 -->
             <div onclick="goToForm('管理員')" class="cursor-pointer bg-slate-800/50 border-2 border-orange-400/50 rounded-2xl p-8 flex flex-col items-center justify-center hover:bg-slate-700 transition transform hover:-translate-y-1">
                 <i class="fas fa-user-shield text-4xl text-orange-400 mb-4"></i>
-                <span class="text-xl font-bold">管理員</span>
+                <span class="text-xl font-bold text-white">管理員</span>
             </div>
 
             <!-- 採購部卡片 -->
@@ -139,15 +143,12 @@
     <script>
         /**
          * 切換至表單頁面
-         * @param {string} dept - 選擇的部門名稱
          */
         function goToForm(dept) {
             document.getElementById('selectionPage').classList.add('hidden');
             document.getElementById('formPage').classList.remove('hidden');
             document.getElementById('deptTag').innerText = dept;
-            // 變更背景色以適應亮色表單
             document.body.style.backgroundColor = '#f8fafc';
-            // 捲動至頂部
             window.scrollTo(0, 0);
         }
 
@@ -184,18 +185,14 @@
          */
         document.getElementById('dispatchForm').onsubmit = function(e) {
             e.preventDefault();
-            
-            // 顯示成功提示
             const toast = document.getElementById('toast');
             toast.classList.remove('opacity-0', 'translate-y-10');
             toast.classList.add('opacity-100', '-translate-y-2');
             
-            // 模擬儲存後重置表單
             setTimeout(() => {
                 toast.classList.remove('opacity-100', '-translate-y-2');
                 toast.classList.add('opacity-0', 'translate-y-10');
                 this.reset();
-                // 保留一個品項輸入框
                 document.getElementById('itemsList').innerHTML = `
                     <div class="flex space-x-2">
                         <input type="text" required placeholder="品項名稱" class="flex-grow border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-slate-400">
