@@ -3,230 +3,387 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業內部調度管理系統 - 專業版</title>
-    <!-- 使用 Tailwind CSS 進行快速 UI 佈局 -->
+    <title>企業調度系統 - 權限管理版</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide 圖示庫 -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f3f4f6; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
         .sidebar-item:hover { background-color: rgba(255, 255, 255, 0.1); }
-        .active-tab { background-color: #3b82f6; color: white; }
+        .active-tab { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         
-        /* 載入動畫樣式 */
-        #loader-overlay {
-            position: fixed;
-            inset: 0;
-            background: #1a202c;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            transition: opacity 0.5s ease;
+        /* 登入頁面特效 */
+        #login-screen {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
         }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid #2d3748;
-            border-top: 5px solid #ed8936;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <!-- 載入畫面 (對應你截圖中的狀況) -->
-    <div id="loader-overlay">
-        <div class="spinner mb-4"></div>
-        <div class="text-orange-500 text-lg tracking-widest font-bold">系統連線中...</div>
-        <div class="text-gray-400 text-sm mt-2">正在初始化雲端資料庫</div>
+    <!-- 登入頁面 -->
+    <div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-10 shadow-2xl w-full max-w-md">
+            <div class="flex flex-col items-center mb-10">
+                <div class="bg-blue-600 p-4 rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
+                    <i data-lucide="shield-check" class="w-10 h-10 text-white"></i>
+                </div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">企業資源調度系統</h1>
+                <p class="text-slate-400 text-sm mt-1">請選擇部門帳號登入</p>
+            </div>
+            
+            <div class="space-y-3">
+                <button onclick="login('procure')" class="w-full flex items-center justify-between px-6 py-4 bg-slate-50 hover:bg-blue-50 border border-slate-100 rounded-2xl transition-all group">
+                    <div class="flex items-center">
+                        <i data-lucide="shopping-cart" class="w-5 h-5 mr-4 text-slate-400 group-hover:text-blue-600"></i>
+                        <span class="font-bold text-slate-700">採購部 (下單/追蹤)</span>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                </button>
+                <button onclick="login('factory')" class="w-full flex items-center justify-between px-6 py-4 bg-slate-50 hover:bg-blue-50 border border-slate-100 rounded-2xl transition-all group">
+                    <div class="flex items-center">
+                        <i data-lucide="truck" class="w-5 h-5 mr-4 text-slate-400 group-hover:text-blue-600"></i>
+                        <span class="font-bold text-slate-700">廠務部 (配送/載回)</span>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                </button>
+                <button onclick="login('warehouse')" class="w-full flex items-center justify-between px-6 py-4 bg-slate-50 hover:bg-blue-50 border border-slate-100 rounded-2xl transition-all group">
+                    <div class="flex items-center">
+                        <i data-lucide="package" class="w-5 h-5 mr-4 text-slate-400 group-hover:text-blue-600"></i>
+                        <span class="font-bold text-slate-700">倉管部 (入庫驗收)</span>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                </button>
+                <button onclick="login('admin')" class="w-full flex items-center justify-between px-6 py-4 bg-slate-900 hover:bg-slate-800 rounded-2xl transition-all group shadow-lg">
+                    <div class="flex items-center">
+                        <i data-lucide="user-cog" class="w-5 h-5 mr-4 text-slate-400"></i>
+                        <span class="font-bold text-white">系統管理員 (全權限)</span>
+                    </div>
+                    <i data-lucide="lock" class="w-4 h-4 text-slate-500"></i>
+                </button>
+            </div>
+            <p class="text-center text-[10px] text-slate-400 mt-10 uppercase tracking-widest font-bold">Secure Access Only</p>
+        </div>
     </div>
 
-    <div class="flex h-screen overflow-hidden">
+    <div id="main-app" class="flex h-screen overflow-hidden hidden">
         <!-- 側邊欄 -->
         <aside class="w-64 bg-slate-900 text-white flex flex-shrink-0 flex-col">
-            <div class="p-6 text-2xl font-bold border-b border-slate-700 flex items-center">
-                <i data-lucide="layers" class="mr-2 text-blue-400"></i>
-                調度中心
+            <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-blue-600 p-2 rounded-lg"><i data-lucide="layers" class="w-5 h-5"></i></div>
+                    <span class="text-xl font-bold tracking-tight">調度 PRO</span>
+                </div>
             </div>
-            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
-                <button onclick="switchTab('factory')" id="btn-factory" class="sidebar-item w-full flex items-center p-3 rounded-lg transition active-tab">
-                    <i data-lucide="factory" class="mr-3 w-5 h-5"></i> 工廠加工進度
+            
+            <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scroll">
+                <div class="px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">操作介面</div>
+                <button onclick="switchTab('procure')" id="btn-procure" class="sidebar-item w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group">
+                    <i data-lucide="shopping-cart" class="mr-3 w-5 h-5 text-slate-400"></i>
+                    <span class="text-sm font-medium">採購看板</span>
                 </button>
-                <button onclick="switchTab('procure')" id="btn-procure" class="sidebar-item w-full flex items-center p-3 rounded-lg transition">
-                    <i data-lucide="shopping-cart" class="mr-3 w-5 h-5"></i> 採購與物料
+                <button onclick="switchTab('factory')" id="btn-factory" class="sidebar-item w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group">
+                    <i data-lucide="truck" class="mr-3 w-5 h-5 text-slate-400"></i>
+                    <span class="text-sm font-medium">廠務看板</span>
                 </button>
-                <button onclick="switchTab('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center p-3 rounded-lg transition">
-                    <i data-lucide="warehouse" class="mr-3 w-5 h-5"></i> 倉庫與庫存
+                <button onclick="switchTab('warehouse')" id="btn-warehouse" class="sidebar-item w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group">
+                    <i data-lucide="package" class="mr-3 w-5 h-5 text-slate-400"></i>
+                    <span class="text-sm font-medium">倉管看板</span>
                 </button>
-                <button onclick="switchTab('shipping')" id="btn-shipping" class="sidebar-item w-full flex items-center p-3 rounded-lg transition">
-                    <i data-lucide="truck" class="mr-3 w-5 h-5"></i> 銷售運輸追蹤
-                </button>
+                <div id="admin-nav" class="hidden">
+                    <div class="px-4 py-2 mt-4 text-[10px] font-black text-red-500 uppercase tracking-widest border-t border-slate-800 pt-6">管理權限</div>
+                    <button onclick="switchTab('admin')" id="btn-admin" class="sidebar-item w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 group text-red-400">
+                        <i data-lucide="trash-2" class="mr-3 w-5 h-5"></i>
+                        <span class="text-sm font-medium">單據清理/管理</span>
+                    </button>
+                </div>
             </nav>
-            <div class="p-4 border-t border-slate-700 bg-slate-800">
-                <div class="flex items-center text-sm">
-                    <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                    連線狀態: 已連線
+
+            <div class="p-4 bg-slate-950 border-t border-slate-800">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center"><i data-lucide="user" class="w-4 h-4"></i></div>
+                    <div class="flex-1 overflow-hidden">
+                        <p id="user-display" class="text-xs font-bold truncate text-slate-200">未登入</p>
+                        <button onclick="logout()" class="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase">登出系統</button>
+                    </div>
                 </div>
             </div>
         </aside>
 
         <!-- 主內容區 -->
         <main class="flex-1 flex flex-col overflow-hidden">
-            <!-- 頂部導航 -->
-            <header class="bg-white shadow-sm px-8 py-4 flex justify-between items-center">
-                <h2 id="page-title" class="text-xl font-bold text-gray-800">工廠加工進度</h2>
-                <div class="flex items-center space-x-4">
-                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center transition" onclick="openModal()">
-                        <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新增加工單
+            <header class="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center">
+                <div>
+                    <h2 id="page-title" class="text-lg font-bold text-slate-800 uppercase tracking-wide">載入中...</h2>
+                    <p id="page-desc" class="text-xs text-slate-500 mt-1 italic">權限受控介面</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button id="main-action-btn" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center transition-all shadow-sm hidden" onclick="openModal()">
+                        <i data-lucide="plus" class="w-4 h-4 mr-2"></i> 建立新單據
                     </button>
                 </div>
             </header>
 
-            <!-- 資料展示區 -->
-            <section id="content-area" class="p-8 overflow-y-auto">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <section id="content-area" class="p-8 flex-1 overflow-y-auto custom-scroll">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm uppercase">
-                                <th class="p-4 font-semibold">單號</th>
-                                <th class="p-4 font-semibold">品項名稱</th>
-                                <th class="p-4 font-semibold">當前階段</th>
-                                <th class="p-4 font-semibold">進度</th>
-                                <th class="p-4 font-semibold">負責人</th>
-                                <th class="p-4 font-semibold">預計交期</th>
-                                <th class="p-4 font-semibold">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-body" class="text-gray-700">
-                            <!-- JS 動態渲染 -->
-                        </tbody>
+                        <thead id="table-head" class="bg-slate-50/50 border-b border-slate-100"></thead>
+                        <tbody id="table-body" class="text-slate-700 divide-y divide-slate-50"></tbody>
                     </table>
                 </div>
             </section>
         </main>
     </div>
 
-    <!-- 簡易 Modal (新增表單) -->
-    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">建立新調度任務</h3>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">品項名稱</label>
-                    <input type="text" id="input-item" class="w-full mt-1 p-2 border border-gray-300 rounded-md outline-blue-500">
-                </div>
+    <!-- 單據 Modal (僅採購與管理員可存取) -->
+    <div id="modal" class="fixed inset-0 bg-slate-950/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-slate-900 tracking-tight">建立調度單據</h3>
+                <button onclick="closeModal()"><i data-lucide="x" class="text-slate-400"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto custom-scroll pr-2 space-y-6">
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">負責人</label>
-                        <input type="text" id="input-owner" class="w-full mt-1 p-2 border border-gray-300 rounded-md">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">類別</label>
-                        <select id="input-category" class="w-full mt-1 p-2 border border-gray-300 rounded-md">
-                            <option>加工中</option>
-                            <option>採購中</option>
-                            <option>待出貨</option>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">單據類型</label>
+                        <select id="input-type" class="w-full px-4 py-3 bg-blue-50 border-0 rounded-xl text-sm font-bold text-blue-700">
+                            <option value="加工件">加工件 (需載回)</option>
+                            <option value="銷售件">銷售件 (送達即結案)</option>
                         </select>
                     </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">單據編號</label>
+                        <input type="text" id="input-id" class="w-full px-4 py-3 bg-slate-50 border-0 rounded-xl text-sm font-mono" readonly>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">廠商名稱 / 加工廠</label>
+                    <input type="text" id="input-vendor" placeholder="輸入廠商完整名稱" class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">內容物清單</label>
+                        <button onclick="addItemRow()" class="text-blue-600 text-xs font-bold flex items-center"><i data-lucide="plus-circle" class="w-3 h-3 mr-1"></i> 新增項目</button>
+                    </div>
+                    <div id="items-container" class="space-y-3"></div>
                 </div>
             </div>
-            <div class="mt-6 flex justify-end space-x-3">
-                <button onclick="closeModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md">取消</button>
-                <button onclick="saveData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">儲存任務</button>
+
+            <div class="mt-8 grid grid-cols-2 gap-3 pt-6 border-t border-slate-100">
+                <button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl">取消</button>
+                <button onclick="saveData()" class="px-6 py-3 bg-blue-600 text-white text-sm font-black rounded-xl hover:bg-blue-700 shadow-lg">提交單據</button>
             </div>
         </div>
     </div>
 
+    <!-- 通知小視窗 -->
+    <div id="notify-box" class="fixed top-6 right-6 z-[300] hidden animate-bounce">
+        <div class="bg-blue-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-4">
+            <div class="bg-white/20 p-2 rounded-xl"><i data-lucide="info" class="w-5 h-5"></i></div>
+            <div>
+                <p class="text-xs font-black uppercase tracking-widest opacity-80">新任務通知</p>
+                <p id="notify-msg" class="text-sm font-bold">您有新的單據待處理</p>
+            </div>
+            <button onclick="hideNotify()" class="text-white/50 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+    </div>
+
     <script>
-        // 初始模擬資料
-        let currentData = [
-            { id: 'JOB-001', name: '精密焊接模組', stage: '品質檢驗', progress: 75, owner: '王大明', date: '2026-03-15', status: 'warning' },
-            { id: 'JOB-002', name: '鋁合金外殼', stage: 'CNC加工', progress: 40, owner: '李小華', date: '2026-03-18', status: 'primary' },
-            { id: 'JOB-003', name: '控制電路板', stage: 'SMT組裝', progress: 95, owner: '張專員', date: '2026-03-12', status: 'success' }
-        ];
-
-        // 初始化頁面
-        window.onload = function() {
-            lucide.createIcons();
-            
-            // 模擬連線成功後隱藏載入畫面 (這解決了你圖片中的問題)
-            setTimeout(() => {
-                const loader = document.getElementById('loader-overlay');
-                loader.style.opacity = '0';
-                setTimeout(() => loader.style.display = 'none', 500);
-            }, 1500);
-
-            renderTable();
+        const deptConfigs = {
+            'procure': { title: '採購看板', role: '採購部主管', columns: ['單號', '類型', '狀態', '廠商', '內容摘要', '操作'] },
+            'factory': { title: '廠務看板', role: '廠務部調度', columns: ['單號', '狀態', '目的地', '品項', '操作'] },
+            'warehouse': { title: '倉管看板', role: '倉管人員', columns: ['單號', '狀態', '來源', '品項', '儲位', '操作'] },
+            'admin': { title: '管理員全視圖', role: '系統管理員', columns: ['單號', '狀態', '所屬流程', '廠商', '操作'] }
         };
 
-        function renderTable() {
-            const tbody = document.getElementById('table-body');
-            tbody.innerHTML = currentData.map(row => `
-                <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
-                    <td class="p-4 font-mono text-xs font-bold">${row.id}</td>
-                    <td class="p-4 font-medium">${row.name}</td>
-                    <td class="p-4">
-                        <span class="px-2 py-1 text-xs rounded-full bg-${row.status === 'warning' ? 'orange' : (row.status === 'success' ? 'green' : 'blue')}-100 text-${row.status === 'warning' ? 'orange' : (row.status === 'success' ? 'green' : 'blue')}-700">
-                            ${row.stage}
-                        </span>
-                    </td>
-                    <td class="p-4 w-40">
-                        <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${row.progress}%"></div>
-                        </div>
-                    </td>
-                    <td class="p-4 text-sm">${row.owner}</td>
-                    <td class="p-4 text-sm text-gray-500">${row.date}</td>
-                    <td class="p-4">
-                        <button class="text-blue-600 hover:underline text-sm font-medium">更新</button>
-                    </td>
-                </tr>
-            `).join('');
+        let currentUser = null;
+        let masterData = [
+            { id: 'PO-9001', type: '加工件', status: '待處理', vendor: '隆昌熱處理', items: [{n:'主軸', q:'100', u:'pcs'}], location: '-', time: Date.now() - 86400000 * 5 },
+            { id: 'SO-8001', type: '銷售件', status: '配送中', vendor: '客戶:台積電', items: [{n:'精密零件', q:'50', u:'set'}], location: '-', time: Date.now() - 86400000 * 2 }
+        ];
+
+        window.onload = function() {
+            lucide.createIcons();
+        };
+
+        function login(role) {
+            currentUser = role;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('user-display').innerText = deptConfigs[role].role;
+            
+            // 管理員額外導航
+            if(role === 'admin') {
+                document.getElementById('admin-nav').classList.remove('hidden');
+            } else {
+                document.getElementById('admin-nav').classList.add('hidden');
+            }
+
+            // 初始化視圖
+            switchTab(role === 'admin' ? 'procure' : role);
+            checkNotifications();
         }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+        }
+
+        function checkNotifications() {
+            let count = 0;
+            if(currentUser === 'procure') count = masterData.filter(d => d.status === '待通知載回').length;
+            if(currentUser === 'factory') count = masterData.filter(d => d.status === '待處理' || d.status === '待載回').length;
+            if(currentUser === 'warehouse') count = masterData.filter(d => d.status === '待入庫').length;
+
+            if(count > 0) {
+                document.getElementById('notify-msg').innerText = `您目前有 ${count} 筆單據待處理中`;
+                document.getElementById('notify-box').classList.remove('hidden');
+                setTimeout(hideNotify, 5000);
+            }
+        }
+
+        function hideNotify() { document.getElementById('notify-box').classList.add('hidden'); }
 
         function switchTab(tab) {
-            // 更新 UI 狀態
-            const tabs = ['factory', 'procure', 'warehouse', 'shipping'];
-            const titles = { 'factory': '工廠加工進度', 'procure': '採購與物料管理', 'warehouse': '庫存與位址管理', 'shipping': '物流運輸監控' };
-            
-            tabs.forEach(t => {
-                const btn = document.getElementById(`btn-${t}`);
-                if (t === tab) btn.classList.add('active-tab');
-                else btn.classList.remove('active-tab');
-            });
+            const config = deptConfigs[tab];
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active-tab'));
+            const btn = document.getElementById(`btn-${tab}`);
+            if(btn) btn.classList.add('active-tab');
 
-            document.getElementById('page-title').innerText = titles[tab];
-            // 實際開發時，此處會從 Firebase 抓取不同 collection 的資料
-            console.log(`切換資料源至: ${tab}`);
+            document.getElementById('page-title').innerText = config.title;
+            
+            // 只有採購或管理員可以建立新單據
+            if(currentUser === 'procure' || currentUser === 'admin') {
+                document.getElementById('main-action-btn').classList.remove('hidden');
+            } else {
+                document.getElementById('main-action-btn').classList.add('hidden');
+            }
+
+            renderTable(tab);
+            lucide.createIcons();
         }
 
-        function openModal() { document.getElementById('modal').classList.remove('hidden'); }
+        function renderTable(viewTab) {
+            const config = deptConfigs[viewTab];
+            const tbody = document.getElementById('table-body');
+            const thead = document.getElementById('table-head');
+
+            thead.innerHTML = `<tr class="text-slate-400 text-[10px] font-black uppercase tracking-widest">${config.columns.map(c => `<th class="px-6 py-4">${c}</th>`).join('')}</tr>`;
+
+            tbody.innerHTML = masterData.filter(d => {
+                // 過濾邏輯
+                if(viewTab === 'warehouse') return d.status === '待入庫' || d.status === '已結案';
+                return true;
+            }).map(item => {
+                let colData = [];
+                let actions = [];
+
+                const summary = item.items.map(i => `${i.n}(${i.q})`).join(', ');
+
+                // 根據當前「登入角色」與「正在看的頁面」決定權限
+                if (viewTab === 'procure') {
+                    colData = [item.id, item.type, item.status, item.vendor, summary];
+                    if(currentUser === 'procure' || currentUser === 'admin') {
+                        if(item.status === '待通知載回') actions.push(`<button onclick="updateStatus('${item.id}', '待載回')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">通知載回</button>`);
+                    }
+                } else if (viewTab === 'factory') {
+                    colData = [item.id, item.status, item.vendor, summary];
+                    if(currentUser === 'factory' || currentUser === 'admin') {
+                        if(item.status === '待處理') actions.push(`<button onclick="updateStatus('${item.id}', '配送中')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">執行配送</button>`);
+                        if(item.status === '配送中') actions.push(`<button onclick="factoryComplete('${item.id}')" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">配送完成</button>`);
+                        if(item.status === '待載回') actions.push(`<button onclick="updateStatus('${item.id}', '載回中')" class="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">執行載回</button>`);
+                        if(item.status === '載回中') actions.push(`<button onclick="updateStatus('${item.id}', '待入庫')" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">抵達工廠</button>`);
+                    }
+                } else if (viewTab === 'warehouse') {
+                    colData = [item.id, item.status, item.vendor, summary, item.location];
+                    if((currentUser === 'warehouse' || currentUser === 'admin') && item.status === '待入庫') {
+                        actions.push(`<button onclick="updateStatus('${item.id}', '已結案')" class="bg-green-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">確認入庫</button>`);
+                    }
+                } else if (viewTab === 'admin') {
+                    colData = [item.id, item.status, item.type, item.vendor];
+                    // 管理員刪除按鍵 (刪除久遠單據)
+                    actions.push(`<button onclick="deleteDoc('${item.id}')" class="text-red-500 p-2 hover:bg-red-50 rounded-lg"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`);
+                }
+
+                return `<tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-6 py-5 font-mono text-xs font-bold text-blue-600">${item.id}</td>
+                    ${colData.slice(1).map(d => `<td class="px-6 py-5 text-sm font-medium">${d}</td>`).join('')}
+                    <td class="px-6 py-5 text-right">${actions.join(' ')}</td>
+                </tr>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        // 刪除邏輯 (管理員專屬)
+        function deleteDoc(id) {
+            if(!confirm(`確定要刪除單據 ${id} 嗎？此操作不可逆。`)) return;
+            masterData = masterData.filter(d => d.id !== id);
+            renderTable(currentUser === 'admin' ? 'admin' : currentUser);
+            showToast('單據已從系統移除');
+        }
+
+        function updateStatus(id, status) {
+            const item = masterData.find(d => d.id === id);
+            item.status = status;
+            if(status === '待入庫') item.location = '待檢區';
+            if(status === '已結案') item.location = '成品倉 A-1';
+            renderTable(currentUser === 'admin' ? 'admin' : currentUser);
+        }
+
+        function factoryComplete(id) {
+            const item = masterData.find(d => d.id === id);
+            if(item.type === '銷售件') {
+                updateStatus(id, '已結案');
+                showToast('銷售件配送完成，已結案');
+            } else {
+                updateStatus(id, '待通知載回');
+                showToast('加工件已送達廠商，待採購確認載回');
+            }
+        }
+
+        // --- 以下為通用功能 ---
+        function addItemRow() {
+            const container = document.getElementById('items-container');
+            const row = document.createElement('div');
+            row.className = 'flex gap-2 items-center';
+            row.innerHTML = `<input type="text" placeholder="品項" class="item-n flex-1 px-3 py-2 border rounded-lg text-xs"><input type="number" placeholder="數量" class="item-q w-20 px-3 py-2 border rounded-lg text-xs"><input type="text" placeholder="單位" class="item-u w-16 px-3 py-2 border rounded-lg text-xs"><button onclick="this.parentElement.remove()" class="text-red-400 p-1"><i data-lucide="minus-circle" class="w-4 h-4"></i></button>`;
+            container.appendChild(row);
+            lucide.createIcons();
+        }
+
+        function openModal() {
+            document.getElementById('input-id').value = 'REQ-' + Date.now().toString().slice(-6);
+            document.getElementById('items-container').innerHTML = '';
+            addItemRow();
+            document.getElementById('modal').classList.remove('hidden');
+        }
         function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
         function saveData() {
-            const name = document.getElementById('input-item').value;
-            const owner = document.getElementById('input-owner').value;
-            if(!name) return alert('請輸入內容');
+            const vendor = document.getElementById('input-vendor').value;
+            const type = document.getElementById('input-type').value;
+            const items = Array.from(document.querySelectorAll('#items-container > div')).map(row => ({
+                n: row.querySelector('.item-n').value, q: row.querySelector('.item-q').value, u: row.querySelector('.item-u').value
+            })).filter(i => i.n && i.q);
 
-            const newId = 'JOB-' + Math.floor(Math.random() * 900 + 100);
-            currentData.unshift({
-                id: newId,
-                name: name,
-                stage: '待處理',
-                progress: 0,
-                owner: owner || '未分配',
-                date: '未定',
-                status: 'primary'
-            });
+            if(!vendor || items.length === 0) return alert('資訊填寫不完整');
 
-            renderTable();
+            masterData.unshift({ id: document.getElementById('input-id').value, type: type, status: '待處理', vendor: vendor, items: items, location: '-', time: Date.now() });
+            switchTab('procure');
             closeModal();
-            // 此處可加入 Firebase 的 addDoc 邏輯
+            showToast('新單據已發起');
+        }
+
+        function showToast(msg) {
+            const t = document.createElement('div');
+            t.className = 'fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl font-bold text-sm z-[500] animate-bounce';
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 2500);
         }
     </script>
 </body>
