@@ -211,25 +211,21 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 配置初始化
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // 全域狀態與配置
+        let db, auth;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v2';
-
         let userAuth = null;
         window.masterData = [];
         window.currentUserRole = null;
 
-        // 將邏輯掛載至 window 以供 HTML onclick 訪問
+        // 頁面行為邏輯
         window.login = (role) => {
             window.currentUserRole = role;
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
             
             const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
-            document.getElementById('user-role-badge').innerText = roles[role];
+            document.getElementById('user-role-badge').innerText = roles[role] || role;
             document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
             document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
             
@@ -243,13 +239,8 @@
             document.getElementById('login-screen').classList.remove('hidden');
         };
 
-        window.openModal = () => {
-            document.getElementById('modal').classList.remove('hidden');
-        };
-
-        window.closeModal = () => {
-            document.getElementById('modal').classList.add('hidden');
-        };
+        window.openModal = () => document.getElementById('modal').classList.remove('hidden');
+        window.closeModal = () => document.getElementById('modal').classList.add('hidden');
 
         window.saveData = async () => {
             const vendor = document.getElementById('input-vendor').value;
@@ -270,7 +261,6 @@
             window.masterData.unshift(newRecord);
             window.closeModal();
             
-            // 清空輸入
             document.getElementById('input-vendor').value = '';
             document.getElementById('input-item-name').value = '';
             document.getElementById('input-item-qty').value = '';
@@ -316,12 +306,13 @@
         };
 
         async function syncToCloud() {
-            if (!userAuth) return;
+            if (!userAuth || !db) return;
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
             try {
                 await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
                 updateSyncUI('connected');
             } catch (e) {
+                console.error("Sync error:", e);
                 updateSyncUI('error');
             }
         }
@@ -329,21 +320,36 @@
         function updateSyncUI(status) {
             const icon = document.getElementById('sync-icon');
             const text = document.getElementById('sync-text');
+            if (!icon || !text) return;
+
             if (status === 'connected') {
                 icon.setAttribute('data-lucide', 'cloud-check');
                 text.innerText = '雲端連線中';
-                text.classList.add('text-emerald-500');
-            } else {
+                text.className = 'text-emerald-500';
+            } else if (status === 'error') {
                 icon.setAttribute('data-lucide', 'cloud-off');
-                text.innerText = '連線異常';
-                text.classList.add('text-red-500');
+                text.innerText = '離線模式';
+                text.className = 'text-red-500';
             }
             if (window.lucide) window.lucide.createIcons();
         }
 
-        // 啟動身份驗證與數據監聽
-        (async function init() {
+        // 初始化 Firebase
+        async function initializeSystem() {
             try {
+                // 檢查是否有配置資訊
+                if (typeof __firebase_config === 'undefined') {
+                    console.warn("Firebase config not found, running in local mode.");
+                    updateSyncUI('error');
+                    return;
+                }
+
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // 身份驗證流程
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -360,14 +366,20 @@
                                 window.masterData = snap.data().records || [];
                                 if (window.currentUserRole) window.renderTables();
                             }
-                        });
+                        }, (err) => console.error("Snapshot error:", err));
                     }
                 });
             } catch (err) {
+                console.error("System init error:", err);
                 updateSyncUI('error');
             }
+        }
+
+        // 確保 DOM 載入後執行
+        window.addEventListener('load', () => {
+            initializeSystem();
             if (window.lucide) window.lucide.createIcons();
-        })();
+        });
     </script>
 </body>
 </html>
