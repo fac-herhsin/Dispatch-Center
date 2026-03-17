@@ -180,7 +180,7 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global Vars & Config
+        // Firebase 初始化與配置
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -192,7 +192,7 @@
         window.masterData = [];
         window.currentUserRole = null;
 
-        // UI Logic
+        // UI 狀態更新邏輯
         function setSyncStatus(status) {
             const btn = document.getElementById('sync-btn');
             const icon = document.getElementById('sync-icon');
@@ -226,7 +226,7 @@
             setTimeout(() => toast.remove(), 4000);
         }
 
-        // Firestore Logic
+        // Firestore 數據處理
         const getMasterDocRef = () => doc(db, 'artifacts', appId, 'public', 'data', 'masterRecords', 'default');
 
         function listenToCloudData() {
@@ -242,7 +242,7 @@
                 }
                 if (window.currentUserRole) window.renderTables();
             }, (error) => {
-                console.error("Firestore Error:", error);
+                console.error("Firestore 監聽失敗:", error);
                 setSyncStatus('error');
             });
         }
@@ -259,18 +259,26 @@
                 });
                 setSyncStatus('connected');
             } catch (err) {
-                console.error("Sync Error:", err);
+                console.error("同步失敗:", err);
                 setSyncStatus('error');
-                showNotification('同步錯誤', '請檢查網路權限');
+                showNotification('同步錯誤', '資料無法上傳');
             }
         }
 
-        // Global Exposed Methods
+        // 將重要函數導出至全域 (解決 type="module" 產生的 Script error)
         window.login = (role) => {
             window.currentUserRole = role;
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
-            document.getElementById('user-role-badge').innerText = role === 'admin' ? '管理員' : (role === 'procure' ? '採購/業務' : (role === 'factory' ? '廠務' : '倉管'));
+            
+            const roleNameMap = {
+                'procure': '採購/業務',
+                'factory': '廠務',
+                'warehouse': '倉管部',
+                'admin': '系統管理員'
+            };
+            
+            document.getElementById('user-role-badge').innerText = roleNameMap[role] || role;
             document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
             document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
             window.renderTables();
@@ -288,7 +296,9 @@
             if(!container.children.length) window.addItemRow(); 
         };
 
-        window.closeModal = () => { document.getElementById('modal').classList.add('hidden'); };
+        window.closeModal = () => { 
+            document.getElementById('modal').classList.add('hidden'); 
+        };
 
         window.addItemRow = () => {
             const container = document.getElementById('items-container');
@@ -298,7 +308,7 @@
                 <div class="col-span-5"><input type="text" placeholder="品項名稱" class="it-n w-full bg-transparent text-xs text-white border-b border-zinc-800 outline-none"></div>
                 <div class="col-span-3"><input type="number" placeholder="數量" class="it-q w-full bg-transparent text-xs text-white border-b border-zinc-800 outline-none"></div>
                 <div class="col-span-2"><input type="text" placeholder="單位" class="it-u w-full bg-transparent text-xs text-white border-b border-zinc-800 outline-none"></div>
-                <div class="col-span-2 text-right"><button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600"><i data-lucide="trash-2" class="w-4 h-4 inline"></i></button></div>
+                <div class="col-span-2 text-right"><button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4 inline"></i></button></div>
             `;
             container.appendChild(row);
             if (window.lucide) window.lucide.createIcons();
@@ -314,7 +324,7 @@
             })).filter(i => i.n && i.q);
 
             if(!vendor || items.length === 0) {
-                showNotification('提示', '請填寫目的地與至少一個品項');
+                showNotification('填寫不全', '請輸入廠商名稱及至少一個品項');
                 return;
             }
 
@@ -343,7 +353,7 @@
         };
 
         window.deleteItem = (id) => {
-            if(confirm(`確定刪除單據 ${id}？`)) {
+            if(confirm(`確定要刪除單據 ${id} 嗎？`)) {
                 window.masterData = window.masterData.filter(d => d.id !== id);
                 syncToCloud();
             }
@@ -393,15 +403,15 @@
             
             let actions = [];
             if (window.currentUserRole === 'factory') {
-                if(item.status === '待處理') actions.push(actionBtn('配送中', 'bg-orange-600', 'truck', item.id));
-                if(item.status === '配送中') actions.push(actionBtn(item.type === '加工件' ? '待通知載回' : '已結案', 'bg-sky-600', 'check-circle', item.id, '完成'));
-                if(item.status === '待載回') actions.push(actionBtn('載回中', 'bg-pink-600', 'rotate-ccw', item.id));
-                if(item.status === '載回中') actions.push(actionBtn('待入庫', 'bg-emerald-600', 'home', item.id));
+                if(item.status === '待處理') actions.push(actionBtn('配送中', 'bg-orange-600', 'truck', item.id, '開始配送'));
+                if(item.status === '配送中') actions.push(actionBtn(item.type === '加工件' ? '待通知載回' : '已結案', 'bg-sky-600', 'check-circle', item.id, '送達'));
+                if(item.status === '待載回') actions.push(actionBtn('載回中', 'bg-pink-600', 'rotate-ccw', item.id, '開始載回'));
+                if(item.status === '載回中') actions.push(actionBtn('待入庫', 'bg-emerald-600', 'home', item.id, '抵達工廠'));
             } else if (window.currentUserRole === 'procure' || window.currentUserRole === 'admin') {
                 if(item.status === '待通知載回' && item.type === '加工件') actions.push(actionBtn('待載回', 'bg-indigo-600', 'bell', item.id, '通知司機'));
                 if(window.currentUserRole === 'admin') actions.push(`<button onclick="window.deleteItem('${item.id}')" class="text-red-500 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`);
             } else if (window.currentUserRole === 'warehouse' && item.status === '待入庫') {
-                actions.push(actionBtn('已結案', 'bg-emerald-700', 'archive', item.id));
+                actions.push(actionBtn('已結案', 'bg-emerald-700', 'archive', item.id, '確認入庫'));
             }
 
             return `<tr>${cols.map(col => {
@@ -417,13 +427,13 @@
         }
 
         function actionBtn(target, color, icon, id, label='') {
-            return `<button onclick="window.updateStatus('${id}', '${target}')" class="${color} text-white px-3 py-1.5 rounded-xl flex items-center space-x-1">
+            return `<button onclick="window.updateStatus('${id}', '${target}')" class="${color} text-white px-3 py-1.5 rounded-xl flex items-center space-x-1 hover:brightness-110 active:scale-95 transition-all">
                 <i data-lucide="${icon}" class="w-3 h-3"></i>
                 ${label ? `<span class="text-[9px] font-bold">${label}</span>` : ''}
             </button>`;
         }
 
-        // Bootstrapping
+        // 啟動與身份驗證
         (async function init() {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -437,10 +447,12 @@
                     if (user) {
                         setSyncStatus('connected');
                         listenToCloudData();
+                    } else {
+                        setSyncStatus('error');
                     }
                 });
             } catch (err) {
-                console.error("Auth Init Fail:", err);
+                console.error("Auth 初始化失敗:", err);
                 setSyncStatus('error');
             }
             if (window.lucide) window.lucide.createIcons();
