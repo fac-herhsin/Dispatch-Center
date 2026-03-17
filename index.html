@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業調度系統 - 部門隔離版</title>
+    <title>企業調度系統 - 列印優化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -16,6 +16,21 @@
         #login-screen {
             background: radial-gradient(circle at top right, #1e293b, #0f172a);
         }
+
+        /* 列印專屬樣式 */
+        @media print {
+            body { background-color: white; }
+            header, #main-action-btn, #print-action-btn, .action-cell, button {
+                display: none !important;
+            }
+            #content-area { padding: 0 !important; }
+            .max-w-7xl { max-width: 100% !important; }
+            .rounded-3xl, .shadow-sm { border-radius: 0 !important; box-shadow: none !important; border-color: #000 !important; }
+            table { width: 100% !important; border: 1px solid #000 !important; }
+            th, td { border: 1px solid #000 !important; color: black !important; padding: 8px !important; }
+            .print-only-title { display: block !important; margin-bottom: 20px; text-align: center; font-size: 24px; font-weight: bold; }
+        }
+        .print-only-title { display: none; }
     </style>
 </head>
 <body class="h-screen overflow-hidden">
@@ -66,7 +81,6 @@
 
     <!-- 主應用程式區 -->
     <div id="main-app" class="flex flex-col h-screen hidden">
-        <!-- 頂部導覽列 (取代側邊欄) -->
         <header class="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shadow-sm z-10">
             <div class="flex items-center space-x-6">
                 <div class="flex items-center space-x-3 border-r border-slate-200 pr-6">
@@ -83,6 +97,10 @@
             </div>
             
             <div class="flex items-center space-x-4">
+                <!-- 批量列印按鈕 (廠務部專用) -->
+                <button id="print-action-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center transition-all shadow-lg shadow-blue-500/20 hidden" onclick="printSelected()">
+                    <i data-lucide="printer" class="w-4 h-4 mr-2"></i> 列印配送清單
+                </button>
                 <button id="main-action-btn" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center transition-all shadow-sm hidden" onclick="openModal()">
                     <i data-lucide="plus" class="w-4 h-4 mr-2"></i> 建立新單據
                 </button>
@@ -99,12 +117,17 @@
             </div>
         </header>
 
-        <!-- 主內容區 -->
         <main class="flex-1 overflow-hidden flex flex-col bg-slate-50">
             <section id="content-area" class="p-8 flex-1 overflow-y-auto custom-scroll">
                 <div class="max-w-7xl mx-auto">
+                    <!-- 列印時才顯示的標題 -->
+                    <div class="print-only-title">
+                        配送人員單日派車清單
+                        <div class="text-sm font-normal mt-2">列印日期：<span id="print-date"></span></div>
+                    </div>
+
                     <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                        <table class="w-full text-left border-collapse">
+                        <table class="w-full text-left border-collapse" id="main-table">
                             <thead id="table-head" class="bg-slate-50/50 border-b border-slate-100"></thead>
                             <tbody id="table-body" class="text-slate-700 divide-y divide-slate-50"></tbody>
                         </table>
@@ -114,7 +137,7 @@
         </main>
     </div>
 
-    <!-- 單據 Modal (不變) -->
+    <!-- 單據 Modal -->
     <div id="modal" class="fixed inset-0 bg-slate-950/40 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-3xl max-w-4xl w-full p-8 shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
             <div class="flex justify-between items-center mb-6">
@@ -128,7 +151,7 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div class="space-y-1">
                         <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">單據類型</label>
-                        <select id="input-type" class="w-full px-4 py-3 bg-blue-50 border-0 rounded-xl text-sm font-bold text-blue-700 focus:ring-2 ring-blue-500">
+                        <select id="input-type" class="w-full px-4 py-3 bg-blue-50 border-0 rounded-xl text-sm font-bold text-blue-700">
                             <option value="加工件">加工件 (需載回)</option>
                             <option value="銷售件">銷售件 (送達即結案)</option>
                         </select>
@@ -140,7 +163,7 @@
                 </div>
                 <div class="space-y-1">
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">廠商名稱 / 加工廠</label>
-                    <input type="text" id="input-vendor" placeholder="輸入廠商完整名稱" class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 ring-blue-500 outline-none">
+                    <input type="text" id="input-vendor" placeholder="輸入廠商完整名稱" class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm outline-none">
                 </div>
                 <div class="space-y-2">
                     <div class="flex justify-between items-center">
@@ -152,7 +175,7 @@
             </div>
             <div class="mt-8 grid grid-cols-2 gap-3 pt-6 border-t border-slate-100">
                 <button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-xl">取消</button>
-                <button onclick="saveData()" class="px-6 py-3 bg-blue-600 text-white text-sm font-black rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20">提交單據</button>
+                <button onclick="saveData()" class="px-6 py-3 bg-blue-600 text-white text-sm font-black rounded-xl shadow-lg">提交單據</button>
             </div>
         </div>
     </div>
@@ -169,7 +192,7 @@
     <script>
         const deptConfigs = {
             'procure': { title: '採購管理看板', role: '採購部主管', columns: ['單號', '狀態', '廠商', '品項與用途備註', '操作'] },
-            'factory': { title: '廠務調度看板', role: '廠務部調度', columns: ['單號', '狀態', '目的地', '品項與用途備註', '操作'] },
+            'factory': { title: '廠務調度看板', role: '廠務部調度', columns: ['選取', '單號', '狀態', '目的地', '品項與用途備註', '操作'] },
             'warehouse': { title: '倉管收貨看板', role: '倉管人員', columns: ['單號', '狀態', '來源', '品項與備註', '操作'] },
             'admin': { title: '系統管理員總表', role: '管理員', columns: ['單號', '狀態', '類型', '廠商', '詳細內容', '操作'] }
         };
@@ -181,11 +204,8 @@
                 type: '加工件', 
                 status: '待處理', 
                 vendor: '隆昌熱處理', 
-                items: [
-                    {n:'主軸', q:'100', u:'pcs', note:'CNC-01 維修用'},
-                    {n:'齒輪組', q:'20', u:'set', note:'Project-B 預備件'}
-                ], 
-                time: Date.now() - 86400000 * 2 
+                items: [{n:'主軸', q:'100', u:'pcs', note:'CNC-01 維修用'}, {n:'齒輪組', q:'20', u:'set', note:'Project-B 預備件'}], 
+                time: Date.now() - 86400000 
             }
         ];
 
@@ -194,15 +214,16 @@
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
             
-            // 介面更新
             const config = deptConfigs[role];
             document.getElementById('page-title').innerText = config.title;
             document.getElementById('user-role-badge').innerText = config.role;
             document.getElementById('user-display').innerText = config.role;
             
-            // 操作按鈕控制
             document.getElementById('main-action-btn').className = (role === 'procure' || role === 'admin') ? 'bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center transition-all shadow-sm' : 'hidden';
             
+            // 只有廠務部可以看到列印按鈕
+            document.getElementById('print-action-btn').classList.toggle('hidden', role !== 'factory');
+
             renderTable(role);
             checkNotifications();
             lucide.createIcons();
@@ -236,9 +257,11 @@
 
                 if (viewMode === 'procure') {
                     colData = [item.id, item.status, item.vendor, formattedItems];
-                    if(item.status === '待通知載回') actions.push(`<button onclick="updateStatus('${item.id}', '待載回')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-md shadow-blue-500/20">通知載回</button>`);
+                    if(item.status === '待通知載回') actions.push(`<button onclick="updateStatus('${item.id}', '待載回')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">通知載回</button>`);
                 } else if (viewMode === 'factory') {
-                    colData = [item.id, item.status, item.vendor, formattedItems];
+                    // 廠務部增加選取框
+                    const checkbox = `<input type="checkbox" class="print-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" value="${item.id}">`;
+                    colData = [checkbox, item.id, item.status, item.vendor, formattedItems];
                     if(item.status === '待處理') actions.push(`<button onclick="updateStatus('${item.id}', '配送中')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">執行配送</button>`);
                     if(item.status === '配送中') actions.push(`<button onclick="factoryComplete('${item.id}')" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">配送完成</button>`);
                     if(item.status === '待載回') actions.push(`<button onclick="updateStatus('${item.id}', '載回中')" class="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">執行載回</button>`);
@@ -256,20 +279,47 @@
                     '待通知載回': 'text-orange-600 bg-orange-50',
                     '待載回': 'text-red-600 bg-red-50',
                     '載回中': 'text-indigo-600 bg-indigo-50',
-                    '待入庫': 'text-green-600 bg-green-50 border-green-200',
+                    '待入庫': 'text-green-600 bg-green-50',
                     '已結案': 'text-slate-400 line-through'
                 };
 
-                return `<tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-6 py-5 font-mono text-xs font-bold text-blue-600">${item.id}</td>
+                return `<tr class="hover:bg-slate-50 transition-colors item-row" data-id="${item.id}">
+                    <td class="px-6 py-5">${colData[0].toString().includes('type="checkbox"') ? colData[0] : `<span class="font-mono text-xs font-bold text-blue-600">${colData[0]}</span>`}</td>
                     <td class="px-6 py-5">
                         <span class="px-2 py-1 rounded text-[10px] font-bold ${statusColors[item.status] || 'bg-slate-100'}">${item.status}</span>
                     </td>
                     ${colData.slice(2).map(d => `<td class="px-6 py-5 text-sm">${d}</td>`).join('')}
-                    <td class="px-6 py-5 text-right whitespace-nowrap">${actions.join(' ')}${deleteBtn}</td>
+                    <td class="px-6 py-5 text-right whitespace-nowrap action-cell">${actions.join(' ')}${deleteBtn}</td>
                 </tr>`;
             }).join('');
             lucide.createIcons();
+        }
+
+        // 列印功能
+        function printSelected() {
+            const checkedBoxes = document.querySelectorAll('.print-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                alert('請先勾選欲列印配送的單據');
+                return;
+            }
+
+            const selectedIds = Array.from(checkedBoxes).map(cb => cb.value);
+            const rows = document.querySelectorAll('.item-row');
+            
+            // 設定列印日期
+            document.getElementById('print-date').innerText = new Date().toLocaleString();
+
+            // 先隱藏沒被勾選的列
+            rows.forEach(row => {
+                const id = row.getAttribute('data-id');
+                if (!selectedIds.includes(id)) {
+                    row.classList.add('print:hidden');
+                } else {
+                    row.classList.remove('print:hidden');
+                }
+            });
+
+            window.print();
         }
 
         function updateStatus(id, status) {
@@ -304,7 +354,7 @@
                 <div class="col-span-2"><input type="number" placeholder="量" class="item-q w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 ring-blue-500"></div>
                 <div class="col-span-2"><input type="text" placeholder="單位" class="item-u w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 ring-blue-500"></div>
                 <div class="col-span-4"><input type="text" placeholder="單獨備註" class="item-note w-full px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 ring-blue-500"></div>
-                <div class="col-span-1 text-right"><button onclick="this.parentElement.parentElement.remove()" class="text-slate-300 hover:text-red-500 transition-colors"><i data-lucide="minus-circle" class="w-4 h-4"></i></button></div>
+                <div class="col-span-1 text-right"><button onclick="this.parentElement.parentElement.remove()" class="text-slate-300 hover:text-red-500"><i data-lucide="minus-circle" class="w-4 h-4"></i></button></div>
             `;
             container.appendChild(row);
             lucide.createIcons();
