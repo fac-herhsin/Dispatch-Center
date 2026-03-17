@@ -15,7 +15,6 @@
             padding: 0;
         }
         
-        /* 參照圖片修正登入卡片樣式 */
         .login-card {
             background-color: #1a1a1a;
             border-radius: 50px;
@@ -59,11 +58,6 @@
             margin-top: 8px;
         }
 
-        .admin-btn:hover {
-            background-color: #e6b800;
-            transform: translateY(-2px);
-        }
-
         .icon-box {
             background-color: #ffcc00;
             width: 100px;
@@ -73,53 +67,40 @@
             align-items: center;
             justify-content: center;
             margin: 0 auto 30px auto;
-            box-shadow: 0 10px 30px rgba(255, 204, 0, 0.3);
         }
 
-        /* 滾動條美化 */
         .custom-scroll::-webkit-scrollbar { width: 5px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         
-        /* 動畫 */
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
-        
-        .sync-spinner { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .toast-item { animation: slideIn 0.3s ease-out forwards; }
     </style>
 </head>
 <body class="h-screen overflow-hidden text-slate-200">
 
-    <div id="toast-container" class="fixed top-6 right-6 z-[300] flex flex-col gap-3 pointer-events-none"></div>
+    <!-- 通知中心 -->
+    <div id="toast-container" class="fixed top-6 right-6 z-[300] flex flex-col gap-3 w-72 pointer-events-none"></div>
 
-    <!-- 登入頁面 (UI 完全參照截圖) -->
+    <!-- 登入頁面 -->
     <div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black">
-        <div class="login-card text-center animate-fade-in">
-            <div class="icon-box">
+        <div class="login-card text-center">
+            <div class="icon-box mb-8">
                 <i data-lucide="truck" class="w-14 h-14 text-black"></i>
             </div>
             <h1 class="text-4xl font-black text-white tracking-tighter mb-2">何鑫 / 薪昌</h1>
             <p class="text-[#ffcc00] font-bold text-sm tracking-[0.4em] uppercase mb-12">載運調度管理系統</p>
             
             <div class="flex flex-col">
-                <button onclick="window.login('procure')" class="login-btn">
-                    採購/業務部
-                </button>
-                <button onclick="window.login('factory')" class="login-btn">
-                    廠務調度
-                </button>
-                <button onclick="window.login('warehouse')" class="login-btn">
-                    倉管部
-                </button>
-                <button onclick="window.login('admin')" class="admin-btn">
-                    系統管理員
-                </button>
+                <button onclick="window.login('procure')" class="login-btn">採購/業務部</button>
+                <button onclick="window.login('factory')" class="login-btn">廠務調度</button>
+                <button onclick="window.login('warehouse')" class="login-btn">倉管部</button>
+                <button onclick="window.login('admin')" class="admin-btn">系統管理員</button>
             </div>
         </div>
     </div>
 
-    <!-- 主頁面 (登入後顯示) -->
+    <!-- 主頁面 -->
     <div id="main-app" class="flex flex-col h-screen hidden">
         <header class="bg-black border-b border-zinc-800 px-8 py-4 flex justify-between items-center z-50">
             <div class="flex items-center space-x-6">
@@ -133,10 +114,10 @@
             </div>
             
             <div class="flex items-center space-x-4">
-                <div id="sync-status" class="flex items-center space-x-2 px-3 py-1.5 bg-zinc-900 rounded-lg text-[10px] font-bold text-zinc-500">
-                    <i id="sync-icon" data-lucide="cloud" class="w-3 h-3"></i>
-                    <span id="sync-text">載入中</span>
-                </div>
+                <button id="sync-btn" onclick="window.manualSync()" class="flex items-center space-x-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-bold text-zinc-300 hover:bg-zinc-800">
+                    <i id="sync-icon" data-lucide="refresh-cw" class="w-3 h-3"></i>
+                    <span>同步雲端</span>
+                </button>
                 <button id="main-action-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center hidden" onclick="window.openModal()">
                     <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新增單據
                 </button>
@@ -147,12 +128,11 @@
         </header>
 
         <main class="flex-1 flex overflow-hidden p-6 gap-6 bg-[#050505]">
-            <!-- 進行中列表 -->
             <section class="flex-1 flex flex-col min-w-0">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-black text-white flex items-center">
                         <span class="w-1.5 h-6 bg-yellow-400 rounded-full mr-3"></span>
-                        進行中單據 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
+                        當前調度清單 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
                     </h3>
                 </div>
                 <div class="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden flex flex-col">
@@ -160,10 +140,10 @@
                         <table class="w-full text-left border-separate border-spacing-0">
                             <thead class="sticky top-0 bg-zinc-900 border-b border-zinc-800 z-10">
                                 <tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                                    <th class="px-6 py-4">單號</th>
+                                    <th class="px-6 py-4">單號/類型</th>
                                     <th class="px-6 py-4">狀態</th>
                                     <th class="px-6 py-4">目的地</th>
-                                    <th class="px-6 py-4">內容</th>
+                                    <th class="px-6 py-4">內容與備註</th>
                                     <th class="px-6 py-4">操作</th>
                                 </tr>
                             </thead>
@@ -175,14 +155,23 @@
         </main>
     </div>
 
-    <!-- 彈窗 (新增單據) -->
+    <!-- 彈窗: 新增單據 -->
     <div id="modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm hidden flex items-center justify-center z-[100] p-4">
         <div class="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
             <h3 class="text-2xl font-black text-white mb-6">新增調度單</h3>
             <div class="space-y-4">
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
-                    <input type="text" id="input-vendor" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">單據類型</label>
+                        <select id="input-type" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
+                            <option value="加工件">加工件</option>
+                            <option value="銷售">銷售</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
+                        <input type="text" id="input-vendor" placeholder="工廠或客戶名稱" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
+                    </div>
                 </div>
                 <div>
                     <label class="text-[10px] font-black text-zinc-500 mb-1 block">品項名稱</label>
@@ -198,10 +187,14 @@
                         <input type="text" id="input-item-unit" value="件" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
                     </div>
                 </div>
+                <div>
+                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">備註</label>
+                    <textarea id="input-note" rows="2" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none resize-none" placeholder="輸入額外說明..."></textarea>
+                </div>
             </div>
             <div class="mt-8 flex gap-3">
                 <button onclick="window.closeModal()" class="flex-1 py-4 text-zinc-500 font-bold">取消</button>
-                <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈</button>
+                <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈單據</button>
             </div>
         </div>
     </div>
@@ -211,14 +204,24 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 全域狀態與配置
-        let db, auth;
+        let db, auth, userAuth;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v2';
-        let userAuth = null;
         window.masterData = [];
         window.currentUserRole = null;
 
-        // 頁面行為邏輯
+        // 通知函數
+        window.showToast = (msg, type = 'info') => {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? 'bg-emerald-600' : (type === 'warning' ? 'bg-orange-600' : 'bg-zinc-800');
+            toast.className = `toast-item ${bg} text-white p-4 rounded-2xl shadow-xl flex items-center space-x-3 pointer-events-auto mb-2 transition-opacity duration-300`;
+            toast.innerHTML = `<i data-lucide="bell" class="w-4 h-4"></i><span class="text-xs font-bold">${msg}</span>`;
+            container.appendChild(toast);
+            if (window.lucide) window.lucide.createIcons();
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        };
+
         window.login = (role) => {
             window.currentUserRole = role;
             document.getElementById('login-screen').classList.add('hidden');
@@ -230,7 +233,7 @@
             document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
             
             window.renderTables();
-            if (window.lucide) window.lucide.createIcons();
+            window.showToast(`歡迎回來，${roles[role]}`, 'success');
         };
 
         window.logout = () => {
@@ -243,36 +246,89 @@
         window.closeModal = () => document.getElementById('modal').classList.add('hidden');
 
         window.saveData = async () => {
+            const type = document.getElementById('input-type').value;
             const vendor = document.getElementById('input-vendor').value;
             const name = document.getElementById('input-item-name').value;
             const qty = document.getElementById('input-item-qty').value;
             const unit = document.getElementById('input-item-unit').value;
+            const note = document.getElementById('input-note').value;
 
-            if(!vendor || !name || !qty) return;
+            if(!vendor || !name || !qty) {
+                window.showToast('請填寫完整資訊', 'warning');
+                return;
+            }
 
             const newRecord = {
-                id: 'HC-' + Math.floor(Math.random() * 9000 + 1000),
+                id: 'HC-' + Date.now().toString().slice(-6),
+                type,
                 status: '待處理',
                 vendor,
+                note,
                 items: [{ n: name, q: qty, u: unit }],
                 timestamp: Date.now()
             };
 
-            window.masterData.unshift(newRecord);
+            window.masterData = [newRecord, ...window.masterData];
+            window.renderTables();
             window.closeModal();
+            window.showToast(`單據 ${newRecord.id} 已建立，請記得點擊同步`, 'success');
             
+            // 清空
             document.getElementById('input-vendor').value = '';
             document.getElementById('input-item-name').value = '';
             document.getElementById('input-item-qty').value = '';
-
-            await syncToCloud();
+            document.getElementById('input-note').value = '';
         };
 
         window.updateStatus = async (id, newStatus) => {
             const index = window.masterData.findIndex(d => d.id === id);
-            if (index !== -1) {
-                window.masterData[index].status = newStatus;
-                await syncToCloud();
+            if (index === -1) return;
+
+            const record = window.masterData[index];
+            let finalStatus = newStatus;
+            let msg = `單據 ${id} 狀態更新為 ${newStatus}`;
+
+            // 自動轉單邏輯
+            if (newStatus === '已送達') {
+                if (record.type === '加工件') {
+                    finalStatus = '待載回';
+                    msg = `加工件 ${id} 已送達，已通知採購部安排載回`;
+                } else {
+                    finalStatus = '已結案';
+                    msg = `銷售件 ${id} 配送完成，已自動結案`;
+                }
+            }
+
+            window.masterData[index].status = finalStatus;
+            window.renderTables();
+            window.showToast(msg, 'success');
+        };
+
+        window.manualSync = async () => {
+            const btn = document.getElementById('sync-btn');
+            const icon = document.getElementById('sync-icon');
+            if (!btn || !icon) return;
+
+            btn.disabled = true;
+            icon.classList.add('animate-spin');
+
+            if (!userAuth || !db) {
+                window.showToast('雲端連線未就緒，請稍後再試', 'warning');
+                btn.disabled = false;
+                icon.classList.remove('animate-spin');
+                return;
+            }
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
+                window.showToast('同步成功！資料已儲存至雲端', 'success');
+            } catch (e) {
+                console.error("Sync Error:", e);
+                window.showToast('同步失敗，權限不足或網路問題', 'warning');
+            } finally {
+                btn.disabled = false;
+                icon.classList.remove('animate-spin');
             }
         };
 
@@ -280,102 +336,97 @@
             const body = document.getElementById('active-body');
             if (!body) return;
 
+            // 顯示進行中的單據（待處理、配送中、待載回）
             const activeRecords = window.masterData.filter(d => d.status !== '已結案');
-            document.getElementById('active-count').innerText = activeRecords.length;
+            const countEl = document.getElementById('active-count');
+            if (countEl) countEl.innerText = activeRecords.length;
 
             body.innerHTML = activeRecords.map(item => {
                 const itemStr = item.items.map(i => `<span class="text-zinc-300 font-bold">${i.n}</span> <span class="text-yellow-400">x${i.q}${i.u}</span>`).join('<br>');
+                const noteStr = item.note ? `<div class="mt-2 text-[10px] text-zinc-500 italic border-l-2 border-zinc-700 pl-2">備註: ${item.note}</div>` : '';
                 
                 let actionBtn = '';
-                if (window.currentUserRole === 'factory' && item.status === '待處理') {
-                    actionBtn = `<button onclick="window.updateStatus('${item.id}', '配送中')" class="bg-orange-600 px-3 py-1.5 rounded-lg text-[10px] font-bold">開始配送</button>`;
-                } else if (window.currentUserRole === 'factory' && item.status === '配送中') {
-                    actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="bg-emerald-600 px-3 py-1.5 rounded-lg text-[10px] font-bold">完成送達</button>`;
+                if (window.currentUserRole === 'factory') {
+                    if (item.status === '待處理') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '配送中')" class="bg-orange-600 px-4 py-2 rounded-xl text-[10px] font-black">開始配送</button>`;
+                    } else if (item.status === '配送中') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已送達')" class="bg-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black">標記送達</button>`;
+                    } else if (item.status === '待載回') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-black">已載回結案</button>`;
+                    }
+                } else if (window.currentUserRole === 'procure' && item.status === '待載回') {
+                    actionBtn = `<div class="text-orange-400 text-[10px] font-bold italic">⚠️ 請通知載回</div>`;
+                } else if (window.currentUserRole === 'admin') {
+                     actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="text-zinc-500 hover:text-red-400 text-[10px] font-bold">手動結案</button>`;
                 }
 
-                return `<tr>
-                    <td class="px-6 py-4 font-mono text-yellow-500 font-bold">${item.id}</td>
-                    <td class="px-6 py-4"><span class="px-2 py-0.5 rounded bg-zinc-800 text-[10px] border border-zinc-700">${item.status}</span></td>
-                    <td class="px-6 py-4 font-bold">${item.vendor}</td>
-                    <td class="px-6 py-4">${itemStr}</td>
-                    <td class="px-6 py-4">${actionBtn}</td>
+                return `<tr class="group hover:bg-zinc-900/40 transition-colors">
+                    <td class="px-6 py-6">
+                        <div class="font-mono text-yellow-500 font-black">${item.id}</div>
+                        <div class="text-[9px] text-zinc-600 font-bold uppercase mt-1">${item.type}</div>
+                    </td>
+                    <td class="px-6 py-6">
+                        <span class="px-3 py-1 rounded-full bg-zinc-800 text-[10px] font-black border border-zinc-700 
+                            ${item.status === '待載回' ? 'text-orange-400 border-orange-900' : 'text-zinc-400'}">
+                            ${item.status}
+                        </span>
+                    </td>
+                    <td class="px-6 py-6 font-bold text-white">${item.vendor}</td>
+                    <td class="px-6 py-6">
+                        <div>${itemStr}</div>
+                        ${noteStr}
+                    </td>
+                    <td class="px-6 py-6">${actionBtn}</td>
                 </tr>`;
             }).join('');
 
             if (window.lucide) window.lucide.createIcons();
         };
 
-        async function syncToCloud() {
-            if (!userAuth || !db) return;
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-            try {
-                await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
-                updateSyncUI('connected');
-            } catch (e) {
-                console.error("Sync error:", e);
-                updateSyncUI('error');
-            }
-        }
-
-        function updateSyncUI(status) {
-            const icon = document.getElementById('sync-icon');
-            const text = document.getElementById('sync-text');
-            if (!icon || !text) return;
-
-            if (status === 'connected') {
-                icon.setAttribute('data-lucide', 'cloud-check');
-                text.innerText = '雲端連線中';
-                text.className = 'text-emerald-500';
-            } else if (status === 'error') {
-                icon.setAttribute('data-lucide', 'cloud-off');
-                text.innerText = '離線模式';
-                text.className = 'text-red-500';
-            }
-            if (window.lucide) window.lucide.createIcons();
-        }
-
-        // 初始化 Firebase
         async function initializeSystem() {
             try {
-                // 檢查是否有配置資訊
-                if (typeof __firebase_config === 'undefined') {
-                    console.warn("Firebase config not found, running in local mode.");
-                    updateSyncUI('error');
-                    return;
-                }
-
+                if (typeof __firebase_config === 'undefined') return;
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 身份驗證流程
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
+                // RULE 3: 先執行登入，等待完成
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+
+                await initAuth();
+
+                // 監聽登入狀態與資料
                 onAuthStateChanged(auth, (user) => {
                     userAuth = user;
                     if (user) {
-                        updateSyncUI('connected');
                         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                        // 帶入錯誤處理回呼以防權限失效
                         onSnapshot(docRef, (snap) => {
                             if (snap.exists()) {
-                                window.masterData = snap.data().records || [];
-                                if (window.currentUserRole) window.renderTables();
+                                const cloudData = snap.data().records || [];
+                                // 只有本地沒有資料時才載入雲端
+                                if (window.masterData.length === 0) {
+                                    window.masterData = cloudData;
+                                    if (window.currentUserRole) window.renderTables();
+                                }
                             }
-                        }, (err) => console.error("Snapshot error:", err));
+                        }, (error) => {
+                            console.error("Firestore Snapshot Error:", error);
+                        });
                     }
                 });
             } catch (err) {
-                console.error("System init error:", err);
-                updateSyncUI('error');
+                console.error("Init Error:", err);
             }
         }
 
-        // 確保 DOM 載入後執行
         window.addEventListener('load', () => {
             initializeSystem();
             if (window.lucide) window.lucide.createIcons();
