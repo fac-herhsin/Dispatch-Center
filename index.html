@@ -224,6 +224,10 @@
     </div>
 
     <script type="module">
+        // --- 設定區塊 ---
+        // 請在此處填入您的 Google Apps Script 部署 URL
+        const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
+        
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -303,9 +307,7 @@
             document.getElementById('input-note').value = '';
         };
 
-        // 刪除單據功能 (僅管理員可用)
         window.deleteRecord = async (id) => {
-            // 由於在 iframe 環境無法使用 confirm()，我們直接執行刪除並提供撤銷提示或直接同步
             const index = window.masterData.findIndex(d => d.id === id);
             if (index === -1) return;
 
@@ -411,7 +413,6 @@
                     }
                 }
                 
-                // 管理員專屬操作：強制結案與刪除
                 if (role === 'admin') {
                     actionBtn = `
                         <div class="flex items-center space-x-2">
