@@ -239,27 +239,22 @@
         </div>
     </div>
 
-    <script type="module">
-    // --- 1. 配置與初始化 ---
+   <script>
+    // 1. 你的 GAS 網址（保持不變）
     const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
-    
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    let db, auth;
-    const appId = 'hc-dispatch-v2';
     window.masterData = [];
     window.currentUserRole = null;
 
-    // --- 2. 登入邏輯 (修正同步問題) ---
+    // 2. 登入邏輯：直接從 Google Sheets 抓取現有資料
     window.login = async (role) => {
         const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.display = 'flex';
+        loader.style.display = 'flex';
 
         try {
             window.currentUserRole = role;
-            await forceRefreshData(); 
+            // 登入時先去抓一次雲端目前的資料
+            await window.manualSync(); 
 
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
@@ -270,123 +265,89 @@
             const actionBtn = document.getElementById('main-action-btn');
             if (actionBtn) actionBtn.classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
 
-            window.renderTables();
             window.showToast(`歡迎回來，${roles[role]}`, 'success');
         } catch (err) {
-            console.error(err);
             window.showToast('連線失敗，請檢查網路', 'danger');
         } finally {
-            if (loader) loader.style.display = 'none';
+            loader.style.display = 'none';
         }
     };
 
-    async function forceRefreshData() {
-        if (!db) return;
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-            window.masterData = snap.data().records || [];
-        }
-    }
+    // 3. 核心功能：直接存檔到 Google Sheets
+    window.saveData = async () => {
+        const loader = document.getElementById('loading-overlay');
+        loader.style.display = 'flex';
 
-    // --- 3. 介面控制函數 (補回遺失的功能) ---
+        const newRecord = {
+            id: 'HC-' + Date.now().toString().slice(-6),
+            type: document.getElementById('input-type').value,
+            status: '待處理',
+            vendor: document.getElementById('input-vendor').value,
+            items: [{ 
+                n: document.getElementById('input-item-name').value, 
+                q: document.getElementById('input-item-qty').value || 0, 
+                u: document.getElementById('input-item-unit').value 
+            }],
+            note: document.getElementById('input-note').value,
+            timestamp: Date.now(),
+            creator: window.currentUserRole
+        };
+
+        try {
+            // 直接發送 POST 請求給 GAS
+            const response = await fetch(gasWebappUrl, {
+                method: 'POST',
+                body: JSON.stringify({ action: "CREATE", ...newRecord })
+            });
+
+            // 存檔成功後，本地資料也同步更新並重新渲染畫面
+            window.masterData = [newRecord, ...window.masterData];
+            window.renderTables();
+            window.closeModal();
+            window.showToast('單據已同步至 Google Sheets', 'success');
+
+            // 清空輸入框
+            document.getElementById('input-vendor').value = '';
+            document.getElementById('input-item-name').value = '';
+        } catch (e) {
+            window.showToast('同步失敗，請稍後再試', 'danger');
+        } finally {
+            loader.style.display = 'none';
+        }
+    };
+
+    // 4. 手動同步（從 Sheets 讀取最新資料）
+    window.manualSync = async () => {
+        const loader = document.getElementById('loading-overlay');
+        loader.style.display = 'flex';
+        try {
+            const resp = await fetch(gasWebappUrl);
+            const data = await resp.json();
+            window.masterData = data || [];
+            window.renderTables();
+            window.showToast('已更新雲端資料', 'success');
+        } catch (e) {
+            window.showToast('同步失敗', 'danger');
+        } finally {
+            loader.style.display = 'none';
+        }
+    };
+
+    // 5. 其餘介面功能 (Toast, Modal, Logout, Render)
     window.openModal = () => document.getElementById('modal').classList.remove('hidden');
     window.closeModal = () => document.getElementById('modal').classList.add('hidden');
-    
-    window.logout = () => {
-        window.currentUserRole = null;
-        document.getElementById('main-app').classList.add('hidden');
-        document.getElementById('login-screen').classList.remove('hidden');
-    };
+    window.logout = () => { location.reload(); }; // 簡單處理直接重刷頁面
 
     window.showToast = (msg, type = 'info') => {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         const colors = { success: 'bg-emerald-500', danger: 'bg-red-500', info: 'bg-blue-500' };
-        toast.className = `${colors[type]} text-white px-6 py-4 rounded-2xl shadow-xl font-bold toast-item flex items-center`;
-        toast.innerHTML = msg;
+        toast.className = `${colors[type]} text-white px-6 py-4 rounded-2xl shadow-xl font-bold toast-item mb-2`;
+        toast.innerText = msg;
         container.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     };
 
-    // --- 4. 核心資料處理 ---
-window.saveData = async () => {
-    // 檢查 Firebase 是否已初始化
-    if (!db) {
-        window.showToast('系統尚未就緒，請重新整理', 'danger');
-        return;
-    }
-
-    const loader = document.getElementById('loading-overlay');
-    loader.style.display = 'flex';
-
-    // 取得輸入值並驗證 (避免空值存檔)
-    const vendor = document.getElementById('input-vendor').value;
-    const itemName = document.getElementById('input-item-name').value;
-    if (!vendor || !itemName) {
-        window.showToast('請填寫目的地與品項名稱', 'danger');
-        loader.style.display = 'none';
-        return;
-    }
-
-    const newRecord = {
-        id: 'HC-' + Date.now().toString().slice(-6),
-        type: document.getElementById('input-type').value,
-        status: '待處理',
-        vendor: vendor,
-        items: [{ 
-            n: itemName, 
-            q: document.getElementById('input-item-qty').value || 0, 
-            u: document.getElementById('input-item-unit').value 
-        }],
-        note: document.getElementById('input-note').value,
-        timestamp: Date.now(),
-        creator: window.currentUserRole
-    };
-
-    try {
-        // 1. 先同步到 Firebase (這是你的前端主要資料來源)
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-        const updatedRecords = [newRecord, ...window.masterData];
-        await setDoc(docRef, { records: updatedRecords, lastUpdate: Date.now() });
-
-        // 2. 背景同步到 GAS (不要讓 GAS 的延遲影響使用者體驗)
-        fetch(gasWebappUrl, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: "CREATE", ...newRecord }) 
-        }).catch(err => console.error("GAS Sync Error:", err));
-
-        window.renderTables();
-        window.closeModal();
-        window.showToast('單據已發佈至雲端', 'success');
-        
-        // 清空表單
-        document.getElementById('input-vendor').value = '';
-        document.getElementById('input-item-name').value = '';
-    } catch (e) {
-        console.error("Save Error:", e);
-        window.showToast('存檔失敗：' + e.message, 'danger');
-    } finally {
-        loader.style.display = 'none';
-    }
-};
-
-    // 狀態更新邏輯
-    window.updateStatus = async (id, nextStatus) => {
-        const idx = window.masterData.findIndex(r => r.id === id);
-        if (idx === -1) return;
-        
-        window.masterData[idx].status = nextStatus;
-        if (nextStatus === '已結案') window.masterData[idx].completedAt = Date.now();
-
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-        await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
-        window.showToast(`狀態更新：${nextStatus}`, 'info');
-    };
-
-    // --- 5. 表格渲染引擎 ---
     window.renderTables = () => {
         const activeBody = document.getElementById('active-body');
         const historyBody = document.getElementById('history-body');
@@ -400,68 +361,20 @@ window.saveData = async () => {
 
         activeList.forEach(r => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-white/5 transition-colors";
+            tr.className = "hover:bg-white/5 transition-colors text-white";
             tr.innerHTML = `
                 <td class="px-6 py-5"><div class="font-black text-yellow-400">${r.id}</div><div class="text-[10px] text-zinc-500">${r.type}</div></td>
                 <td class="px-6 py-5"><span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px] font-bold">${r.status}</span></td>
-                <td class="px-6 py-5 font-bold text-white text-lg">${r.vendor}</td>
-                <td class="px-6 py-5"><div class="text-white font-bold">${r.items[0].q} x ${r.items[0].n}</div><div class="text-[10px] text-zinc-500">${r.note || ''}</div></td>
-                <td class="px-6 py-5">
-                    <button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button>
-                </td>
+                <td class="px-6 py-5 font-bold text-lg">${r.vendor}</td>
+                <td class="px-6 py-5"><div>${r.items[0].q} x ${r.items[0].n}</div><div class="text-[10px] text-zinc-500">${r.note || ''}</div></td>
+                <td class="px-6 py-5"><button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button></td>
             `;
             activeBody.appendChild(tr);
-        });
-
-        historyList.forEach(r => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="px-6 py-4 text-zinc-500 text-xs">${r.id}</td>
-                <td class="px-6 py-4 text-zinc-500 text-xs">${r.type}</td>
-                <td class="px-6 py-4 text-zinc-400 font-medium">${r.vendor}</td>
-                <td class="px-6 py-4 text-zinc-600 text-[10px]">${new Date(r.completedAt).toLocaleString()}</td>
-                <td class="px-6 py-4 text-zinc-500 text-xs">${r.items[0].n}</td>
-                <td class="px-6 py-4"><i data-lucide="check-circle-2" class="w-4 h-4 text-zinc-700"></i></td>
-            `;
-            historyBody.appendChild(tr);
         });
         if (window.lucide) lucide.createIcons();
     };
 
-    // --- 6. 啟動 ---
-    async function init() {
-        try {
-        // 請將下方的 {} 替換成你 Firebase 專案設定頁面的「SDK 設定組合」
-        const config = {
-            apiKey: "你的API_KEY",
-            authDomain: "你的專案ID.firebaseapp.com",
-            projectId: "你的專案ID",
-            storageBucket: "你的專案ID.appspot.com",
-            messagingSenderId: "...",
-            appId: "..."
-        };
-            const app = initializeApp(config);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            await signInAnonymously(auth);
-            
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-            onSnapshot(docRef, (snap) => {
-                if (snap.exists()) {
-                    window.masterData = snap.data().records || [];
-                    if (window.currentUserRole) window.renderTables();
-                }
-            });
-            if (window.lucide) lucide.createIcons();
-        } catch (e) { console.error("Init Error", e); }
-    }
-
-    window.addEventListener('load', init);
-    // 每秒更新一次時間顯示
-    setInterval(() => {
-        const display = document.getElementById('current-time-display');
-        if (display) display.innerText = new Date().toLocaleString();
-    }, 1000);
+    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 </body>
 </html>
