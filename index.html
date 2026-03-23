@@ -359,22 +359,75 @@
 
         document.getElementById('active-count').innerText = activeList.length;
 
-        activeList.forEach(r => {
+activeList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-white/5 transition-colors text-white";
+
+            // 1. 先計算要顯示什麼按鈕 (寫在 HTML 之外)
+            let actionHtml = '';
+
+            if (window.currentUserRole === 'factory') {
+                // 廠務部看到的按鈕：若還是「待處理」則顯示確認配送
+                actionHtml = r.status === '待處理' 
+                    ? `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-black transition-all">確認配送</button>`
+                    : `<span class="text-blue-400 text-[10px]">已在配送中</span>`;
+            } else if (window.currentUserRole === 'admin' || window.currentUserRole === 'warehouse') {
+                // 管理員或倉管看到的按鈕：結案
+                actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button>`;
+            } else {
+                // 採購/業務部只能看
+                actionHtml = `<span class="text-zinc-600 text-[10px]">等待處理</span>`;
+            }
+
+            // 2. 最後才把 actionHtml 塞進 tr.innerHTML 裡面
             tr.innerHTML = `
-                <td class="px-6 py-5"><div class="font-black text-yellow-400">${r.id}</div><div class="text-[10px] text-zinc-500">${r.type}</div></td>
-                <td class="px-6 py-5"><span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px] font-bold">${r.status}</span></td>
+                <td class="px-6 py-5">
+                    <div class="font-black text-yellow-400">${r.id}</div>
+                    <div class="text-[10px] text-zinc-500">${r.type}</div>
+                </td>
+                <td class="px-6 py-5">
+                    <span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px] font-bold">${r.status}</span>
+                </td>
                 <td class="px-6 py-5 font-bold text-lg">${r.vendor}</td>
-                <td class="px-6 py-5"><div>${r.items[0].q} x ${r.items[0].n}</div><div class="text-[10px] text-zinc-500">${r.note || ''}</div></td>
-                <td class="px-6 py-5"><button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button></td>
+                <td class="px-6 py-5">
+                    <div>${r.items[0].q} x ${r.items[0].n}</div>
+                    <div class="text-[10px] text-zinc-500">${r.note || ''}</div>
+                </td>
+                <td class="px-6 py-5">${actionHtml}</td> 
             `;
             activeBody.appendChild(tr);
         });
         if (window.lucide) lucide.createIcons();
-    };
+   }; 
 
-    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
+// 這裡就是具體位置！請貼入以下這段：
+window.updateStatus = async (id, newStatus) => {
+    const loader = document.getElementById('loading-overlay');
+    if (loader) loader.style.display = 'flex';
+
+    try {
+        const response = await fetch(gasWebappUrl, {
+            method: 'POST',
+            body: JSON.stringify({ 
+                action: "UPDATE_STATUS", 
+                id: id, 
+                status: newStatus 
+            })
+        });
+
+        if (response.ok) {
+            window.showToast(`單據 ${id} 已更新為 ${newStatus}`, 'success');
+            await window.manualSync(); 
+        } else {
+            throw new Error('網路回應不正常');
+        }
+    } catch (e) {
+        window.showToast('更新失敗，請檢查雲端連線', 'danger');
+        console.error('Update Error:', e);
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+};    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 </body>
 </html>
