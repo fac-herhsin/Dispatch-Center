@@ -1,435 +1,398 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
-  Truck, 
-  Plus, 
-  LogOut, 
-  RefreshCw, 
-  Trash2, 
-  Calendar,
-  CheckCircle2,
-  Clock,
-  ChevronRight,
-  MessageSquare,
-  AlertCircle
-} from 'lucide-react';
+  Layout, Card, Button, Table, Badge, Row, Col, 
+  Input, InputNumber, Select, Form, Space, 
+  Typography, Tag, Modal, Spin, message, Divider,
+  Tabs, Popconfirm, Statistic
+} from 'antd';
+import { 
+  TruckOutlined, 
+  PlusOutlined, 
+  HistoryOutlined, 
+  SyncOutlined, 
+  LogoutOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined
+} from '@ant-design/icons';
 
-/**
- * [設定區] 
- * GAS_URL 用於同步到 Google Sheets
- */
-const GAS_URL = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec";
+const { Header, Content } = Layout;
+const { Title, Text } = Typography;
+const { Option } = Select;
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null); 
+// --- 請更換為您的 GAS 部署網址 ---
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx2i6bAtO_your_real_id/exec";
+
+const App = () => {
+  const [userRole, setUserRole] = useState(null); // 'procure', 'factory', 'warehouse', 'admin'
+  const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(null);
-  
-  const [formData, setFormData] = useState({
-    type: '加工件',
-    vendor: '',
-    item: '',
-    qty: '',
-    unit: '件',
-    note: ''
-  });
+  const [form] = Form.useForm();
 
-  // 1. Firebase 初始化
-  const firebaseConfig = useMemo(() => {
-    try {
-      return typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-    } catch (e) {
-      return null;
-    }
+  // 1. 模擬初始數據
+  useEffect(() => {
+    const mock = [
+      { id: 'HC-992101', type: '加工件', status: '待處理', vendor: '大發工業', item: '鋼捲', qty: 5, unit: '件', note: '急件', timestamp: Date.now() - 3600000, creator: '採購部' },
+      { id: 'HC-992102', type: '銷售', status: '配送中', vendor: '中龍鋼鐵', item: '鐵皮', qty: 10, unit: '綑', note: '', timestamp: Date.now() - 7200000, creator: '業務部' },
+    ];
+    setRecords(mock);
+    // fetchData(); 
   }, []);
 
-  const firebaseApp = useMemo(() => firebaseConfig ? initializeApp(firebaseConfig) : null, [firebaseConfig]);
-  const db = useMemo(() => firebaseApp ? getFirestore(firebaseApp) : null, [firebaseApp]);
-  const auth = useMemo(() => firebaseApp ? getAuth(firebaseApp) : null, [firebaseApp]);
-  const appId = useMemo(() => typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-default', []);
-
-  // 2. 驗證流程
-  useEffect(() => {
-    if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        setErrorMessage("驗證失敗，請重新整理頁面。");
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, [auth]);
-
-  // 3. 資料監聽 - 修正路徑段數問題 (固定 6 段)
-  useEffect(() => {
-    if (!user || !db || !appId) return;
-
-    // RULE 1 嚴格遵守: /artifacts/{appId}/public/data/{collection}/{doc}
-    // 指向一個固定文檔 master，路徑段數為 6 (偶數)
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'storage', 'master_list');
-    
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRecords(Array.isArray(data.items) ? data.items : []);
-      } else {
-        setRecords([]);
-      }
-    }, (err) => {
-      console.error("Firestore Listen Error:", err);
-      // 如果權限錯誤通常是因為路徑不對或未登入
-    });
-    return () => unsubscribe();
-  }, [user, db, appId]);
-
-  // 輔助：安全轉化字串，避免 React Child 錯誤
-  const safeStr = (val) => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'object') return JSON.stringify(val);
-    return String(val);
-  };
-
-  // 存檔至 Firebase
-  const saveToFirebase = async (newList) => {
-    if (!db || !user || !appId) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'storage', 'master_list');
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const cleanList = newList.map(item => ({
-        ...item,
-        id: safeStr(item.id),
-        type: safeStr(item.type),
-        vendor: safeStr(item.vendor),
-        item: safeStr(item.item),
-        qty: safeStr(item.qty),
-        unit: safeStr(item.unit),
-        status: safeStr(item.status),
-        note: safeStr(item.note)
-      }));
-
-      await setDoc(docRef, { 
-        items: cleanList, 
-        lastUpdate: Date.now() 
-      });
+      const res = await fetch(GAS_URL);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setRecords(data);
+      }
     } catch (e) {
-      setErrorMessage("存檔失敗: " + e.message);
+      message.error("無法同步雲端數據");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 同步至 Google Sheets (非同步不影響 UI)
-  const syncToGAS = async (payload) => {
-    if (!GAS_URL) return;
-    fetch(GAS_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify(payload)
-    }).catch(() => {});
+  const handleLogin = (role) => {
+    setUserRole(role);
+    message.success(`歡迎登入：${getRoleName(role)}`);
   };
 
-  const handleLogout = () => {
-    setRole(null);
-    if (auth) auth.signOut();
+  const getRoleName = (role) => {
+    const names = { procure: '採購/業務部', factory: '廠務調度', warehouse: '倉管部', admin: '系統管理員' };
+    return names[role] || role;
   };
 
-  const handleSubmit = async () => {
-    if (!formData.vendor || !formData.item || !formData.qty) return;
-    setLoading(true);
-
-    const newId = `HC-${Date.now().toString().slice(-6)}`;
-    const now = new Date();
-    const timeStr = now.toLocaleString('zh-TW', { hour12: false });
-    
+  const handleCreate = async (values) => {
+    const newId = 'HC-' + Date.now().toString().slice(-6);
     const newRecord = {
+      ...values,
       id: newId,
-      type: formData.type,
-      vendor: formData.vendor,
-      item: formData.item,
-      qty: formData.qty,
-      unit: formData.unit,
-      note: formData.note || '',
-      time: timeStr,
       status: '待處理',
       timestamp: Date.now(),
-      completedAt: null
+      creator: getRoleName(userRole),
+      action: "CREATE"
     };
 
-    const newList = [newRecord, ...records];
-    await saveToFirebase(newList);
-    syncToGAS({ action: "CREATE", ...newRecord });
-    
-    setFormData({ type: '加工件', vendor: '', item: '', qty: '', unit: '件', note: '' });
-    setIsModalOpen(false);
-    setLoading(false);
+    setLoading(true);
+    try {
+      // 實際發送到 GAS
+      /*
+      await fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify(newRecord)
+      });
+      */
+      setRecords([newRecord, ...records]);
+      setIsModalOpen(false);
+      form.resetFields();
+      message.success("單據已發佈");
+    } catch (e) {
+      message.error("儲存失敗");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateStatus = async (id, nextStatus) => {
-    setLoading(true);
-    const updatedRecords = records.map(r => {
+    const updated = records.map(r => {
       if (r.id === id) {
         let finalStatus = nextStatus;
-        let completedAt = r.completedAt;
-        if (nextStatus === '已送達' && r.type === '銷售') finalStatus = '已結案';
-        if (finalStatus === '已結案') completedAt = Date.now();
-        return { ...r, status: finalStatus, completedAt };
+        if (nextStatus === '已送達' && r.type === '加工件') {
+          finalStatus = '待採購確認';
+        }
+        return { ...r, status: finalStatus };
       }
       return r;
     });
 
-    await saveToFirebase(updatedRecords);
-    syncToGAS({ action: "UPDATE_STATUS", id, status: nextStatus });
-    setLoading(false);
+    setRecords(updated);
+    message.info(`單據 ${id} 狀態已更新`);
+    
+    try {
+      /*
+      await fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ id, status: nextStatus, action: "UPDATE_STATUS" })
+      });
+      */
+    } catch (e) { console.error(e); }
   };
 
-  const deleteRecord = async (id) => {
-    if (!window.confirm("確定刪除？")) return;
-    setLoading(true);
-    const newList = records.filter(r => r.id !== id);
-    await saveToFirebase(newList);
-    syncToGAS({ action: "DELETE", id });
-    setLoading(false);
+  const handleDelete = async (id) => {
+    setRecords(records.filter(r => r.id !== id));
+    message.warning("單據已刪除");
   };
 
-  // 過濾資料
-  const activeRecords = records.filter(r => r && r.status !== '已結案');
-  const historyRecords = records.filter(r => r && r.status === '已結案').sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0));
-
-  if (!role) {
+  if (!userRole) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
-        <div className="bg-zinc-900 w-full max-w-md rounded-[2.5rem] p-10 text-center border border-zinc-800 shadow-2xl">
-          <div className="w-20 h-20 bg-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-amber-400/10">
-            <Truck size={40} className="text-black" />
+      <div className="flex items-center justify-center min-h-screen bg-black p-4">
+        <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 rounded-[3rem] p-8 shadow-2xl">
+          <div className="text-center mb-10">
+            <div className="bg-yellow-400 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <TruckOutlined className="text-4xl text-black" />
+            </div>
+            <Title level={2} className="text-white !m-0 font-black">何鑫 / 薪昌</Title>
+            <Text className="text-yellow-400 font-bold tracking-widest uppercase text-xs">載運調度管理系統</Text>
           </div>
-          <h1 className="text-2xl font-black text-white mb-1">何鑫 / 薪昌</h1>
-          <p className="text-zinc-500 text-[10px] tracking-[0.3em] mb-10 uppercase font-bold">載運管理系統</p>
-          <div className="grid gap-3">
-            {[
-              { id: 'procure', label: '採購 / 業務部' },
-              { id: 'factory', label: '廠務調度' },
-              { id: 'admin', label: '管理員' }
-            ].map((r) => (
-              <button 
-                key={r.id}
-                onClick={() => setRole(r.id)}
-                className="w-full p-4 rounded-xl bg-zinc-800 text-white font-bold text-sm hover:bg-zinc-700 transition-all border border-zinc-700/50 flex items-center justify-between"
-              >
-                {r.label} <ChevronRight size={16} className="text-zinc-500"/>
-              </button>
-            ))}
-          </div>
-        </div>
+          <Space direction="vertical" className="w-full" size="middle">
+            <Button block className="h-14 rounded-2xl bg-zinc-800 border-none text-white font-bold hover:!bg-zinc-700" onClick={() => handleLogin('procure')}>採購 / 業務部</Button>
+            <Button block className="h-14 rounded-2xl bg-zinc-800 border-none text-white font-bold hover:!bg-zinc-700" onClick={() => handleLogin('factory')}>廠務調度部</Button>
+            <Button block className="h-14 rounded-2xl bg-zinc-800 border-none text-white font-bold hover:!bg-zinc-700" onClick={() => handleLogin('warehouse')}>倉管部</Button>
+            <Button block className="h-14 rounded-2xl bg-yellow-400 border-none text-black font-black hover:!bg-yellow-300" onClick={() => handleLogin('admin')}>系統管理員</Button>
+          </Space>
+        </Card>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-black text-zinc-400 font-sans">
-      {/* 錯誤提示 */}
-      {errorMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-rose-500 text-white px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl font-bold animate-bounce">
-          <AlertCircle size={18}/> {errorMessage}
-          <button onClick={() => setErrorMessage(null)} className="ml-4 opacity-50">✕</button>
+  const columns = [
+    {
+      title: '單號',
+      dataIndex: 'id',
+      key: 'id',
+      render: (text, record) => (
+        <div>
+          <Text className="font-mono font-bold text-yellow-500">{text}</Text>
+          <div className="text-[10px] text-zinc-500">{record.type}</div>
         </div>
-      )}
-
-      {loading && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center">
-          <RefreshCw className="text-amber-400 animate-spin" size={32} />
+      )
+    },
+    {
+      title: '狀態',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => {
+        let color = 'default';
+        if (status === '待處理') color = 'processing';
+        if (status === '配送中') color = 'warning';
+        if (status === '待採購確認') color = 'error';
+        if (status === '已結案') color = 'success';
+        return <Badge status={color} text={<Text className="text-zinc-300">{status}</Text>} />;
+      }
+    },
+    {
+      title: '目的地',
+      dataIndex: 'vendor',
+      key: 'vendor',
+      render: (val) => <Text className="text-white font-bold">{val}</Text>
+    },
+    {
+      title: '內容/備註',
+      key: 'content',
+      render: (_, r) => (
+        <div>
+          <Text className="text-zinc-300">{r.item} x {r.qty} {r.unit}</Text>
+          {r.note && <div className="text-[11px] text-zinc-500 italic mt-1">備註: {r.note}</div>}
         </div>
-      )}
-
-      <header className="px-8 py-6 border-b border-zinc-900 sticky top-0 bg-black/80 backdrop-blur-xl z-40 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="bg-amber-400 p-2 rounded-xl">
-            <Truck size={20} className="text-black" />
-          </div>
-          <h2 className="text-white font-black text-lg tracking-tight">載運調度</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          {(role === 'procure' || role === 'admin') && (
-            <button onClick={() => setIsModalOpen(true)} className="bg-amber-400 text-black px-4 py-2 rounded-lg font-black text-xs flex items-center transition-transform active:scale-95">
-              <Plus size={16} className="mr-1"/> 新任務
-            </button>
+      )
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_, record) => (
+        <Space>
+          {userRole === 'factory' && record.status === '待處理' && (
+            <Button size="small" type="primary" className="bg-orange-600 border-none" onClick={() => updateStatus(record.id, '配送中')}>開始配送</Button>
           )}
-          <button onClick={handleLogout} className="p-2 bg-zinc-900 rounded-lg text-zinc-500 hover:text-white transition-colors">
-            <LogOut size={18}/>
-          </button>
-        </div>
-      </header>
+          {userRole === 'factory' && record.status === '配送中' && (
+            <Button size="small" type="primary" className="bg-green-600 border-none" onClick={() => updateStatus(record.id, '已送達')}>標記送達</Button>
+          )}
+          {userRole === 'factory' && record.status === '待載回' && (
+            <Button size="small" type="primary" className="bg-blue-600 border-none" onClick={() => updateStatus(record.id, '已結案')}>確認載回</Button>
+          )}
+          {userRole === 'procure' && record.status === '待採購確認' && (
+            <Button size="small" className="bg-yellow-500 border-none text-black font-bold animate-pulse" onClick={() => updateStatus(record.id, '待載回')}>確認載回時機</Button>
+          )}
+          {userRole === 'admin' && (
+            <Popconfirm title="確定刪除此單據？" onConfirm={() => handleDelete(record.id)}>
+              <Button size="small" danger icon={<DeleteOutlined />} type="text" />
+            </Popconfirm>
+          )}
+          {(userRole === 'admin' || userRole === 'warehouse') && record.status !== '已結案' && (
+            <Button size="small" type="link" onClick={() => updateStatus(record.id, '已結案')}>手動結案</Button>
+          )}
+        </Space>
+      )
+    }
+  ];
 
-      <main className="p-6 max-w-6xl mx-auto space-y-10">
-        <section>
-          <div className="flex items-center justify-between mb-6">
-             <h3 className="text-white font-black text-xs uppercase tracking-widest flex items-center gap-2">
-               <span className="w-1 h-4 bg-amber-400 rounded-full"></span> 執行中清單
-             </h3>
-             <span className="text-[10px] bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800 font-bold">
-               {activeRecords.length} 筆待辦
-             </span>
+  return (
+    <Layout className="min-h-screen bg-[#050505]">
+      <Header className="bg-black border-b border-zinc-800 px-6 flex items-center justify-between">
+        <Space size="large">
+          <div className="flex flex-col leading-tight">
+            <Text className="text-white font-black text-lg">載運調度管理系統</Text>
+            <Space size={4}>
+              <Tag color="gold" className="text-[10px] font-bold border-none">{getRoleName(userRole)}</Tag>
+              <Text className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">{new Date().toLocaleDateString()}</Text>
+            </Space>
           </div>
+        </Space>
+        
+        <Space>
+          <Button 
+            ghost 
+            icon={<SyncOutlined spin={loading} />} 
+            className="border-zinc-700 text-zinc-400 hover:text-white"
+            onClick={fetchData}
+          >同步雲端</Button>
+          
+          {(userRole === 'procure' || userRole === 'admin') && (
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />} 
+              className="bg-emerald-600 border-none font-bold"
+              onClick={() => setIsModalOpen(true)}
+            >新增單據</Button>
+          )}
+          
+          <Button 
+            icon={<LogoutOutlined />} 
+            className="bg-zinc-900 border-zinc-800 text-zinc-500"
+            onClick={() => setUserRole(null)}
+          />
+        </Space>
+      </Header>
 
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="text-[10px] text-zinc-500 uppercase tracking-widest border-b border-zinc-800 bg-zinc-900/50">
-                    <th className="px-6 py-4 font-black">單號分類</th>
-                    <th className="px-6 py-4 font-black">狀態</th>
-                    <th className="px-6 py-4 font-black">廠商 / 時間</th>
-                    <th className="px-6 py-4 font-black">內容</th>
-                    <th className="px-6 py-4 font-black text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/50">
-                  {activeRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-20 text-center text-zinc-600 text-xs italic">尚無進行中的任務</td>
-                    </tr>
-                  ) : activeRecords.map(item => (
-                    <tr key={item.id} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="px-6 py-5">
-                        <div className="text-amber-500 font-bold font-mono text-xs">{safeStr(item.id)}</div>
-                        <div className="text-[10px] text-zinc-600 mt-1 font-black">{safeStr(item.type)}</div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                          item.status === '待處理' ? 'bg-zinc-800 text-zinc-400 border-zinc-700' :
-                          'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                        }`}>
-                          {safeStr(item.status)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="text-zinc-200 font-bold">{safeStr(item.vendor)}</div>
-                        <div className="text-[10px] text-zinc-600 mt-1">{safeStr(item.time)}</div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="text-zinc-400 font-medium">{safeStr(item.item)}</div>
-                        <div className="text-[10px] text-zinc-600 mt-1">{safeStr(item.qty)} {safeStr(item.unit)}</div>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex justify-end gap-2">
-                          {role === 'factory' && (
-                            item.status === '待處理' ? (
-                              <button onClick={() => updateStatus(item.id, '配送中')} className="bg-blue-600 text-white px-3 py-1 rounded text-[10px] font-black">配送</button>
-                            ) : (
-                              <button onClick={() => updateStatus(item.id, '已送達')} className="bg-emerald-600 text-white px-3 py-1 rounded text-[10px] font-black">送達</button>
-                            )
-                          )}
-                          {(role === 'admin' || role === 'procure') && (
-                            <button onClick={() => deleteRecord(item.id)} className="p-1.5 text-zinc-700 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                              <Trash2 size={16}/>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section className="pt-10 border-t border-zinc-900">
-           <div className="flex items-center gap-2 mb-6">
-             <Clock size={16} className="text-zinc-700"/>
-             <h3 className="text-zinc-600 font-black text-[10px] uppercase tracking-widest">歷史結案記錄</h3>
-           </div>
-           <div className="space-y-3">
-              {historyRecords.slice(0, 5).map(h => (
-                <div key={h.id} className="flex justify-between items-center bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl">
-                  <div className="flex gap-4 items-center">
-                    <span className="text-zinc-700 font-mono text-[10px]">{safeStr(h.id)}</span>
-                    <div>
-                      <span className="text-zinc-400 font-bold text-xs block">{safeStr(h.vendor)}</span>
-                      <span className="text-zinc-600 text-[10px]">{safeStr(h.item)}</span>
-                    </div>
-                  </div>
-                  <div className="text-zinc-700 text-[10px] font-black border border-zinc-800 px-3 py-1 rounded-full uppercase">
-                    結案
-                  </div>
-                </div>
-              ))}
-           </div>
-        </section>
-      </main>
-
-      {/* 新增任務彈窗 */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[2rem] p-8 shadow-2xl">
-            <h3 className="text-xl font-black text-white mb-6">發佈載運任務</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <select 
-                  value={formData.type}
-                  onChange={e => setFormData({...formData, type: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
-                >
-                  <option value="加工件">加工件</option>
-                  <option value="銷售">銷售單</option>
-                  <option value="原料">原料</option>
-                </select>
-                <input 
-                  placeholder="廠商名稱"
-                  value={formData.vendor}
-                  onChange={e => setFormData({...formData, vendor: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
-                />
-              </div>
-              <input 
-                placeholder="品項說明"
-                value={formData.item}
-                onChange={e => setFormData({...formData, item: e.target.value})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
+      <Content className="p-6">
+        <Row gutter={[16, 16]} className="mb-8">
+          <Col xs={24} md={8}>
+            <Card className="bg-zinc-900 border-zinc-800 rounded-2xl shadow-lg">
+              <Statistic 
+                title={<span style={{ color: '#666', fontSize: '12px', fontWeight: 'bold' }}>待處理單據</span>}
+                value={records.filter(r => r.status !== '已結案').length}
+                valueStyle={{ color: '#ffcc00', fontWeight: 900 }}
+                prefix={<ClockCircleOutlined />}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <input 
-                  type="number"
-                  placeholder="數量"
-                  value={formData.qty}
-                  onChange={e => setFormData({...formData, qty: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
-                />
-                <input 
-                  placeholder="單位 (件/KG)"
-                  value={formData.unit}
-                  onChange={e => setFormData({...formData, unit: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
-                />
-              </div>
-              <textarea 
-                placeholder="備註 (選填)"
-                rows={2}
-                value={formData.note}
-                onChange={e => setFormData({...formData, note: e.target.value})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-sm outline-none resize-none"
+            </Card>
+          </Col>
+          <Col xs={24} md={8}>
+            <Card className="bg-zinc-900 border-zinc-800 rounded-2xl shadow-lg">
+              <Statistic 
+                title={<span style={{ color: '#666', fontSize: '12px', fontWeight: 'bold' }}>今日完成</span>}
+                value={records.filter(r => r.status === '已結案').length}
+                valueStyle={{ color: '#52c41a', fontWeight: 900 }}
+                prefix={<CheckCircleOutlined />}
               />
-            </div>
-            <div className="mt-8 flex gap-3">
-              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-zinc-500 font-bold text-xs uppercase tracking-widest">取消</button>
-              <button 
-                onClick={handleSubmit} 
-                className="flex-[2] bg-amber-400 text-black py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-400/10"
-              >
-                發佈
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+            </Card>
+          </Col>
+          <Col xs={24} md={8}>
+            <Card className="bg-zinc-900 border-zinc-800 rounded-2xl shadow-lg">
+              <Statistic 
+                title={<span style={{ color: '#666', fontSize: '12px', fontWeight: 'bold' }}>執行中配送</span>}
+                value={records.filter(r => r.status === '配送中').length}
+                valueStyle={{ color: '#1890ff', fontWeight: 900 }}
+                prefix={<TruckOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        <Card className="bg-zinc-900 border-zinc-800 rounded-3xl overflow-hidden shadow-2xl" bodyStyle={{ padding: 0 }}>
+          <Tabs 
+            defaultActiveKey="1" 
+            className="custom-tabs"
+            items={[
+              {
+                key: '1',
+                label: <span className="px-6 font-bold">當前調度清單</span>,
+                children: (
+                  <Table 
+                    columns={columns} 
+                    dataSource={records.filter(r => r.status !== '已結案')}
+                    rowKey="id"
+                    pagination={false}
+                    className="ant-table-dark"
+                  />
+                )
+              },
+              {
+                key: '2',
+                label: <span className="px-6 font-bold">歷史結案紀錄</span>,
+                children: (
+                  <Table 
+                    columns={columns.slice(0, 4)} 
+                    dataSource={records.filter(r => r.status === '已結案')}
+                    rowKey="id"
+                    pagination={{ pageSize: 10 }}
+                    className="ant-table-dark"
+                  />
+                )
+              }
+            ]}
+          />
+        </Card>
+      </Content>
+
+      <Modal
+        title={<Title level={4} className="!m-0 text-white font-black">新增調度單據</Title>}
+        open={isModalOpen}
+        onCancel={() => setIsModalOpen(false)}
+        footer={null}
+        className="dark-modal"
+        centered
+      >
+        <Form form={form} layout="vertical" onFinish={handleCreate} className="mt-4">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="type" label="單據類型" rules={[{ required: true }]} initialValue="加工件">
+                <Select className="dark-select">
+                  <Option value="加工件">加工件</Option>
+                  <Option value="銷售">銷售</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="vendor" label="目的地 (工廠/客戶)" rules={[{ required: true }]}>
+                <Input placeholder="輸入名稱" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="item" label="品項名稱" rules={[{ required: true }]}>
+            <Input placeholder="例如：鍍鋅鐵捲" />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="qty" label="數量" rules={[{ required: true }]}>
+                <InputNumber className="w-full" min={1} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="unit" label="單位" initialValue="件">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="note" label="備註事項">
+            <Input.TextArea rows={3} placeholder="輸入特殊要求..." />
+          </Form.Item>
+          <Button type="primary" block size="large" htmlType="submit" className="bg-yellow-400 text-black font-black border-none h-12 rounded-xl mt-4">
+            確認發佈單據
+          </Button>
+        </Form>
+      </Modal>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .ant-layout { background: #050505 !important; }
+        .ant-card { background: #121212 !important; border-color: #222 !important; }
+        .ant-table { background: transparent !important; color: #ccc !important; }
+        .ant-table-thead > tr > th { background: #1a1a1a !important; color: #555 !important; border-bottom: 1px solid #222 !important; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        .ant-table-tbody > tr > td { border-bottom: 1px solid #1a1a1a !important; padding: 16px !important; }
+        .ant-table-tbody > tr:hover > td { background: #1a1a1a !important; }
+        .ant-tabs-nav { margin-bottom: 0 !important; background: #0c0c0c; border-bottom: 1px solid #222 !important; }
+        .ant-tabs-tab { color: #555 !important; padding: 16px 0 !important; }
+        .ant-tabs-tab-active .ant-tabs-tab-btn { color: #ffcc00 !important; }
+        .ant-tabs-ink-bar { background: #ffcc00 !important; }
+        .dark-modal .ant-modal-content { background: #1a1a1a !important; border-radius: 2rem !important; border: 1px solid #333; }
+        .dark-modal .ant-form-item-label label { color: #888 !important; font-size: 11px; font-weight: bold; }
+        .dark-modal .ant-input, .dark-modal .ant-input-number, .dark-modal .ant-select-selector { background: #0a0a0a !important; border-color: #333 !important; color: white !important; border-radius: 0.75rem !important; }
+      `}} />
+    </Layout>
   );
-}
+};
+
+export default App;
