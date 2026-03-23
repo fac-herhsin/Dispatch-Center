@@ -286,16 +286,35 @@
             }
         };
 
-        window.login = (role) => {
-            window.currentUserRole = role;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
-            document.getElementById('user-role-badge').innerText = roles[role] || role;
-            document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
-            document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
-            window.renderTables();
-            window.showToast(`歡迎回來，${roles[role]}`, 'success');
+window.login = async (role) => {
+            const loader = document.getElementById('loading-overlay');
+            if (loader) loader.style.display = 'flex'; // 顯示轉圈圈，讓使用者知道在抓資料
+
+            try {
+                window.currentUserRole = role;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                
+                const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
+                document.getElementById('user-role-badge').innerText = roles[role] || role;
+                document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
+                
+                const actionBtn = document.getElementById('main-action-btn');
+                if (actionBtn) {
+                    actionBtn.classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
+                }
+
+                // --- 這是最關鍵的一行：登入時強制去雲端抓資料 ---
+                await window.manualSync(true); 
+                
+                window.renderTables();
+                window.showToast(`歡迎回來，${roles[role]}`, 'success');
+            } catch (err) {
+                console.error(err);
+                window.showToast('讀取雲端資料失敗', 'danger');
+            } finally {
+                if (loader) loader.style.display = 'none'; // 抓完資料關閉轉圈圈
+            }
         };
 
         window.logout = () => {
@@ -422,7 +441,7 @@
             loader.style.display = 'none';
         };
 
-        window.manualSync = async (isAuto = false) => {
+window.manualSync = async (isAuto = false) => {
             if (isSyncing) return;
             const btn = document.getElementById('sync-btn');
             const icon = document.getElementById('sync-icon');
@@ -438,23 +457,42 @@
             try {
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
                 const snap = await getDoc(docRef);
-                let finalData = [...window.masterData];
+                
+                // --- 修改後的邏輯：確保從雲端抓回來的資料不會被空本地蓋掉 ---
+                let finalData = [];
                 
                 if (snap.exists()) {
                     const cloudRecords = snap.data().records || [];
-                    const localIds = new Set(window.masterData.map(r => r.id));
-                    cloudRecords.forEach(cr => {
-                        if (!localIds.has(cr.id)) finalData.push(cr);
-                    });
-                    finalData.sort((a, b) => b.timestamp - a.timestamp);
+                    
+                    // 如果本地目前沒資料（剛重新整理），直接用雲端的
+                    if (window.masterData.length === 0) {
+                        finalData = [...cloudRecords];
+                    } else {
+                        // 如果本地有新資料，進行合併
+                        finalData = [...window.masterData];
+                        const localIds = new Set(window.masterData.map(r => r.id));
+                        cloudRecords.forEach(cr => {
+                            if (!localIds.has(cr.id)) finalData.push(cr);
+                        });
+                    }
+                } else {
+                    // 如果雲端完全沒資料，就用本地目前的
+                    finalData = [...window.masterData];
                 }
 
-                await setDoc(docRef, { records: finalData, lastUpdate: Date.now() });
+                // 排序：新的在前
+                finalData.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+                // 只有在真的有資料時才寫回 Firebase，避免意外清空
+                if (finalData.length > 0) {
+                    await setDoc(docRef, { records: finalData, lastUpdate: Date.now() });
+                }
+                
                 window.masterData = finalData;
                 window.renderTables();
                 if (!isAuto) window.showToast('雲端快取同步成功！', 'success');
             } catch (e) {
-                console.error(e);
+                console.error("同步錯誤:", e);
                 window.showToast('Firebase 同步失敗', 'warning');
             } finally {
                 isSyncing = false;
