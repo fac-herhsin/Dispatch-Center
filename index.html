@@ -310,44 +310,68 @@
     };
 
     // --- 4. 核心資料處理 ---
-    window.saveData = async () => {
-        const loader = document.getElementById('loading-overlay');
-        loader.style.display = 'flex';
+window.saveData = async () => {
+    // 檢查 Firebase 是否已初始化
+    if (!db) {
+        window.showToast('系統尚未就緒，請重新整理', 'danger');
+        return;
+    }
 
-        const newRecord = {
-            id: 'HC-' + Date.now().toString().slice(-6),
-            type: document.getElementById('input-type').value,
-            status: '待處理',
-            vendor: document.getElementById('input-vendor').value,
-            items: [{ 
-                n: document.getElementById('input-item-name').value, 
-                q: document.getElementById('input-item-qty').value, 
-                u: document.getElementById('input-item-unit').value 
-            }],
-            note: document.getElementById('input-note').value,
-            timestamp: Date.now(),
-            creator: window.currentUserRole
-        };
+    const loader = document.getElementById('loading-overlay');
+    loader.style.display = 'flex';
 
-        try {
-            // 同步 GAS
-            fetch(gasWebappUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "CREATE", ...newRecord }) });
+    // 取得輸入值並驗證 (避免空值存檔)
+    const vendor = document.getElementById('input-vendor').value;
+    const itemName = document.getElementById('input-item-name').value;
+    if (!vendor || !itemName) {
+        window.showToast('請填寫目的地與品項名稱', 'danger');
+        loader.style.display = 'none';
+        return;
+    }
 
-            await forceRefreshData();
-            window.masterData = [newRecord, ...window.masterData];
-            
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-            await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
-
-            window.renderTables();
-            window.closeModal();
-            window.showToast('單據已發佈至雲端', 'success');
-        } catch (e) {
-            window.showToast('存檔失敗', 'danger');
-        } finally {
-            loader.style.display = 'none';
-        }
+    const newRecord = {
+        id: 'HC-' + Date.now().toString().slice(-6),
+        type: document.getElementById('input-type').value,
+        status: '待處理',
+        vendor: vendor,
+        items: [{ 
+            n: itemName, 
+            q: document.getElementById('input-item-qty').value || 0, 
+            u: document.getElementById('input-item-unit').value 
+        }],
+        note: document.getElementById('input-note').value,
+        timestamp: Date.now(),
+        creator: window.currentUserRole
     };
+
+    try {
+        // 1. 先同步到 Firebase (這是你的前端主要資料來源)
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+        const updatedRecords = [newRecord, ...window.masterData];
+        await setDoc(docRef, { records: updatedRecords, lastUpdate: Date.now() });
+
+        // 2. 背景同步到 GAS (不要讓 GAS 的延遲影響使用者體驗)
+        fetch(gasWebappUrl, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: "CREATE", ...newRecord }) 
+        }).catch(err => console.error("GAS Sync Error:", err));
+
+        window.renderTables();
+        window.closeModal();
+        window.showToast('單據已發佈至雲端', 'success');
+        
+        // 清空表單
+        document.getElementById('input-vendor').value = '';
+        document.getElementById('input-item-name').value = '';
+    } catch (e) {
+        console.error("Save Error:", e);
+        window.showToast('存檔失敗：' + e.message, 'danger');
+    } finally {
+        loader.style.display = 'none';
+    }
+};
 
     // 狀態更新邏輯
     window.updateStatus = async (id, nextStatus) => {
@@ -407,7 +431,15 @@
     // --- 6. 啟動 ---
     async function init() {
         try {
-            const config = JSON.parse(document.body.getAttribute('data-fb-config') || '{}'); 
+        // 請將下方的 {} 替換成你 Firebase 專案設定頁面的「SDK 設定組合」
+        const config = {
+            apiKey: "你的API_KEY",
+            authDomain: "你的專案ID.firebaseapp.com",
+            projectId: "你的專案ID",
+            storageBucket: "你的專案ID.appspot.com",
+            messagingSenderId: "...",
+            appId: "..."
+        };
             const app = initializeApp(config);
             auth = getAuth(app);
             db = getFirestore(app);
