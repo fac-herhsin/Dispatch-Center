@@ -240,7 +240,7 @@
     </div>
 
     <script type="module">
-    // --- 配置保持不變 ---
+    // --- 1. 配置與初始化 ---
     const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
     
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -251,17 +251,14 @@
     const appId = 'hc-dispatch-v2';
     window.masterData = [];
     window.currentUserRole = null;
-    let isInitialized = false; // 新增：判斷是否完成初次讀取
 
-    // 登入邏輯強化
+    // --- 2. 登入邏輯 (修正同步問題) ---
     window.login = async (role) => {
         const loader = document.getElementById('loading-overlay');
-        loader.style.display = 'flex';
+        if (loader) loader.style.display = 'flex';
 
         try {
             window.currentUserRole = role;
-            
-            // 先確保抓到最新資料才進主畫面
             await forceRefreshData(); 
 
             document.getElementById('login-screen').classList.add('hidden');
@@ -276,26 +273,44 @@
             window.renderTables();
             window.showToast(`歡迎回來，${roles[role]}`, 'success');
         } catch (err) {
+            console.error(err);
             window.showToast('連線失敗，請檢查網路', 'danger');
         } finally {
-            loader.style.display = 'none';
+            if (loader) loader.style.display = 'none';
         }
     };
 
-    // 強制從 Firebase 抓取最新資料
     async function forceRefreshData() {
         if (!db) return;
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
         const snap = await getDoc(docRef);
         if (snap.exists()) {
             window.masterData = snap.data().records || [];
-            console.log("資料已從雲端恢復:", window.masterData.length, "筆");
         }
     }
 
-    // 保存資料邏輯 (加入存檔檢查)
+    // --- 3. 介面控制函數 (補回遺失的功能) ---
+    window.openModal = () => document.getElementById('modal').classList.remove('hidden');
+    window.closeModal = () => document.getElementById('modal').classList.add('hidden');
+    
+    window.logout = () => {
+        window.currentUserRole = null;
+        document.getElementById('main-app').classList.add('hidden');
+        document.getElementById('login-screen').classList.remove('hidden');
+    };
+
+    window.showToast = (msg, type = 'info') => {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const colors = { success: 'bg-emerald-500', danger: 'bg-red-500', info: 'bg-blue-500' };
+        toast.className = `${colors[type]} text-white px-6 py-4 rounded-2xl shadow-xl font-bold toast-item flex items-center`;
+        toast.innerHTML = msg;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    };
+
+    // --- 4. 核心資料處理 ---
     window.saveData = async () => {
-        // ... 前段獲取 input 值邏輯不變 ...
         const loader = document.getElementById('loading-overlay');
         loader.style.display = 'flex';
 
@@ -309,15 +324,15 @@
                 q: document.getElementById('input-item-qty').value, 
                 u: document.getElementById('input-item-unit').value 
             }],
+            note: document.getElementById('input-note').value,
             timestamp: Date.now(),
             creator: window.currentUserRole
         };
 
         try {
-            // 1. 先同步 GAS
-            await fetch(gasWebappUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "CREATE", ...newRecord }) });
+            // 同步 GAS
+            fetch(gasWebappUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "CREATE", ...newRecord }) });
 
-            // 2. 更新本地與 Firebase (關鍵：先抓最新的再存進去，避免覆蓋別人的)
             await forceRefreshData();
             window.masterData = [newRecord, ...window.masterData];
             
@@ -326,7 +341,7 @@
 
             window.renderTables();
             window.closeModal();
-            window.showToast('單據已發佈', 'success');
+            window.showToast('單據已發佈至雲端', 'success');
         } catch (e) {
             window.showToast('存檔失敗', 'danger');
         } finally {
@@ -334,18 +349,70 @@
         }
     };
 
-    // 初始化 Firebase
+    // 狀態更新邏輯
+    window.updateStatus = async (id, nextStatus) => {
+        const idx = window.masterData.findIndex(r => r.id === id);
+        if (idx === -1) return;
+        
+        window.masterData[idx].status = nextStatus;
+        if (nextStatus === '已結案') window.masterData[idx].completedAt = Date.now();
+
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+        await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
+        window.showToast(`狀態更新：${nextStatus}`, 'info');
+    };
+
+    // --- 5. 表格渲染引擎 ---
+    window.renderTables = () => {
+        const activeBody = document.getElementById('active-body');
+        const historyBody = document.getElementById('history-body');
+        activeBody.innerHTML = '';
+        historyBody.innerHTML = '';
+
+        const activeList = window.masterData.filter(r => r.status !== '已結案');
+        const historyList = window.masterData.filter(r => r.status === '已結案');
+
+        document.getElementById('active-count').innerText = activeList.length;
+
+        activeList.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-white/5 transition-colors";
+            tr.innerHTML = `
+                <td class="px-6 py-5"><div class="font-black text-yellow-400">${r.id}</div><div class="text-[10px] text-zinc-500">${r.type}</div></td>
+                <td class="px-6 py-5"><span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px] font-bold">${r.status}</span></td>
+                <td class="px-6 py-5 font-bold text-white text-lg">${r.vendor}</td>
+                <td class="px-6 py-5"><div class="text-white font-bold">${r.items[0].q} x ${r.items[0].n}</div><div class="text-[10px] text-zinc-500">${r.note || ''}</div></td>
+                <td class="px-6 py-5">
+                    <button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button>
+                </td>
+            `;
+            activeBody.appendChild(tr);
+        });
+
+        historyList.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-6 py-4 text-zinc-500 text-xs">${r.id}</td>
+                <td class="px-6 py-4 text-zinc-500 text-xs">${r.type}</td>
+                <td class="px-6 py-4 text-zinc-400 font-medium">${r.vendor}</td>
+                <td class="px-6 py-4 text-zinc-600 text-[10px]">${new Date(r.completedAt).toLocaleString()}</td>
+                <td class="px-6 py-4 text-zinc-500 text-xs">${r.items[0].n}</td>
+                <td class="px-6 py-4"><i data-lucide="check-circle-2" class="w-4 h-4 text-zinc-700"></i></td>
+            `;
+            historyBody.appendChild(tr);
+        });
+        if (window.lucide) lucide.createIcons();
+    };
+
+    // --- 6. 啟動 ---
     async function init() {
         try {
-            // 這裡請確保 __firebase_config 有正確帶入
             const config = JSON.parse(document.body.getAttribute('data-fb-config') || '{}'); 
             const app = initializeApp(config);
             auth = getAuth(app);
             db = getFirestore(app);
-
             await signInAnonymously(auth);
             
-            // 設定實時監聽
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
             onSnapshot(docRef, (snap) => {
                 if (snap.exists()) {
@@ -353,10 +420,16 @@
                     if (window.currentUserRole) window.renderTables();
                 }
             });
+            if (window.lucide) lucide.createIcons();
         } catch (e) { console.error("Init Error", e); }
     }
 
     window.addEventListener('load', init);
+    // 每秒更新一次時間顯示
+    setInterval(() => {
+        const display = document.getElementById('current-time-display');
+        if (display) display.innerText = new Date().toLocaleString();
+    }, 1000);
 </script>
 </body>
 </html>
