@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>何鑫/薪昌載運系統</title>
+    <title>何鑫/薪昌載運系統 - 雲端版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -93,7 +93,7 @@
             
             <div class="flex flex-col">
                 <button onclick="window.login('procure')" class="login-btn">採購/業務部</button>
-                <button onclick="window.login('factory')" class="login-btn">廠務調度</button>
+                <button onclick="window.login('factory')" class="login-btn">廠務調度部</button>
                 <button onclick="window.login('warehouse')" class="login-btn">倉管部</button>
                 <button onclick="window.login('admin')" class="admin-btn">系統管理員</button>
             </div>
@@ -114,9 +114,9 @@
             </div>
             
             <div class="flex items-center space-x-4">
-                <button id="sync-btn" onclick="window.manualSync()" class="flex items-center space-x-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-bold text-zinc-300 hover:bg-zinc-800">
-                    <i id="sync-icon" data-lucide="refresh-cw" class="w-3 h-3"></i>
-                    <span>同步雲端</span>
+                <button id="sync-btn" onclick="window.manualSyncToSpreadsheet()" class="flex items-center space-x-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-bold text-zinc-300 hover:bg-zinc-800">
+                    <i id="sync-icon" data-lucide="table" class="w-3 h-3"></i>
+                    <span>同步試算表</span>
                 </button>
                 <button id="main-action-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center hidden" onclick="window.openModal()">
                     <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新增單據
@@ -167,7 +167,7 @@
                                 <th class="px-6 py-4">單號</th>
                                 <th class="px-6 py-4">類型</th>
                                 <th class="px-6 py-4">目的地</th>
-                                <th class="px-6 py-4">完成時間</th>
+                                <th class="px-6 py-4">結案時間</th>
                                 <th class="px-6 py-4">內容</th>
                                 <th class="px-6 py-4">管理</th>
                             </tr>
@@ -225,19 +225,21 @@
 
     <script type="module">
         // --- 設定區塊 ---
-        // 請在此處填入您部署後的 Google Apps Script 網頁應用程式 URL
+        // 請填入您的 Google Apps Script 網址以啟動同步到試算表的功能
         const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
         
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // 全域狀態
         let db, auth, userAuth;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v2';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v3';
         window.masterData = [];
         window.currentUserRole = null;
         let isSyncing = false;
 
+        // UI 通知
         window.showToast = (msg, type = 'info') => {
             const container = document.getElementById('toast-container');
             if (!container) return;
@@ -250,45 +252,18 @@
             setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
         };
 
-        // 新增功能：同步資料至 Google 試算表
-        window.syncToSheet = async (record) => {
-            if (!gasWebappUrl || gasWebappUrl.includes("您的ID")) return;
-            
-            try {
-                const itemDetails = record.items.map(i => `${i.n} x${i.q}${i.u}`).join(', ');
-                const payload = {
-                    id: record.id,
-                    type: record.type,
-                    status: record.status,
-                    vendor: record.vendor,
-                    items: itemDetails,
-                    note: record.note || '',
-                    timestamp: new Date(record.timestamp).toLocaleString('zh-TW'),
-                    completedAt: record.completedAt ? new Date(record.completedAt).toLocaleString('zh-TW') : ''
-                };
-
-                // 使用 fetch 發送 POST 請求
-                await fetch(gasWebappUrl, {
-                    method: 'POST',
-                    mode: 'no-cors', // 重要：避免跨域問題
-                    cache: 'no-cache',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                console.log("試算表同步指令已發送");
-            } catch (e) {
-                console.error("試算表同步失敗:", e);
-            }
-        };
-
+        // 登入邏輯
         window.login = (role) => {
             window.currentUserRole = role;
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
-            const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
+            const roles = {'procure':'採購/業務部', 'factory':'廠務調度部', 'warehouse':'倉管部', 'admin':'系統管理員'};
             document.getElementById('user-role-badge').innerText = roles[role] || role;
             document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
+            
+            // 只有採購或管理員可以新增單據
             document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
+            
             window.renderTables();
             window.showToast(`歡迎回來，${roles[role]}`, 'success');
         };
@@ -302,6 +277,7 @@
         window.openModal = () => document.getElementById('modal').classList.remove('hidden');
         window.closeModal = () => document.getElementById('modal').classList.add('hidden');
 
+        // 核心資料操作
         window.saveData = async () => {
             const type = document.getElementById('input-type').value;
             const vendor = document.getElementById('input-vendor').value;
@@ -326,73 +302,98 @@
                 completedAt: null
             };
 
-            window.masterData = [newRecord, ...window.masterData];
-            window.renderTables();
-            window.closeModal();
-            window.showToast(`單據 ${newRecord.id} 已建立`, 'info');
+            // 存入 Firestore
+            try {
+                const updatedList = [newRecord, ...window.masterData];
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                await setDoc(docRef, { records: updatedList, lastUpdate: Date.now() });
+                window.closeModal();
+                window.showToast(`單據 ${newRecord.id} 已發佈至雲端`, 'success');
+                
+                // 清空欄位
+                document.getElementById('input-vendor').value = '';
+                document.getElementById('input-item-name').value = '';
+                document.getElementById('input-item-qty').value = '';
+                document.getElementById('input-note').value = '';
+            } catch (e) {
+                window.showToast('發佈失敗，請檢查網路', 'danger');
+            }
+        };
+
+        window.deleteRecord = async (id) => {
+            if (!confirm(`確定要永久刪除單據 ${id} 嗎？此動作無法復原。`)) return;
+
+            const index = window.masterData.findIndex(d => d.id === id);
+            if (index === -1) return;
+
+            const updatedList = [...window.masterData];
+            updatedList.splice(index, 1);
             
-            await window.manualSync(true);
-            window.syncToSheet(newRecord); // 同步到試算表
-            
-            document.getElementById('input-vendor').value = '';
-            document.getElementById('input-item-name').value = '';
-            document.getElementById('input-item-qty').value = '';
-            document.getElementById('input-note').value = '';
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                await setDoc(docRef, { records: updatedList, lastUpdate: Date.now() });
+                window.showToast(`單據 ${id} 已被管理員永久刪除`, 'danger');
+            } catch (e) {
+                window.showToast('刪除失敗', 'danger');
+            }
         };
 
         window.updateStatus = async (id, newStatus) => {
             const index = window.masterData.findIndex(d => d.id === id);
             if (index === -1) return;
 
-            const record = window.masterData[index];
+            const updatedList = JSON.parse(JSON.stringify(window.masterData));
+            const record = updatedList[index];
             let finalStatus = newStatus;
-            
+            let msg = `單據 ${id} 狀態更新為 ${newStatus}`;
+
+            // 特殊邏輯處理
             if (newStatus === '已送達') {
                 if (record.type === '加工件') {
                     finalStatus = '待採購確認';
+                    msg = `加工件已送達，請通知採購部確認載回`;
                 } else {
+                    // 銷售單送達即結案
                     finalStatus = '已結案';
-                    window.masterData[index].completedAt = Date.now();
+                    record.completedAt = Date.now();
                 }
             } else if (newStatus === '已結案') {
-                window.masterData[index].completedAt = Date.now();
+                record.completedAt = Date.now();
             }
 
-            window.masterData[index].status = finalStatus;
-            window.renderTables();
-            window.showToast(`狀態更新為 ${finalStatus}`, 'success');
+            record.status = finalStatus;
             
-            await window.manualSync(true);
-            window.syncToSheet(window.masterData[index]); // 更新狀態時同步到試算表
-        };
-
-        window.deleteRecord = async (id) => {
-            const index = window.masterData.findIndex(d => d.id === id);
-            if (index === -1) return;
-            window.masterData.splice(index, 1);
-            window.renderTables();
-            window.showToast(`單據 ${id} 已刪除`, 'danger');
-            await window.manualSync(true);
-        };
-
-        window.manualSync = async (isAuto = false) => {
-            if (isSyncing) return;
-            const btn = document.getElementById('sync-btn');
-            const icon = document.getElementById('sync-icon');
-            isSyncing = true;
-            if (btn && icon) { btn.disabled = true; icon.classList.add('animate-spin'); }
-
-            if (!db) { isSyncing = false; return; }
-
             try {
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-                await setDoc(docRef, { records: window.masterData, lastUpdate: Date.now() });
-                if (!isAuto) window.showToast('同步成功！', 'success');
+                await setDoc(docRef, { records: updatedList, lastUpdate: Date.now() });
+                window.showToast(msg, 'success');
             } catch (e) {
-                window.showToast('同步失敗', 'warning');
+                window.showToast('更新失敗', 'danger');
+            }
+        };
+
+        // 同步至 Google 試算表 (需填寫 gasWebappUrl)
+        window.manualSyncToSpreadsheet = async () => {
+            if (!gasWebappUrl) {
+                window.showToast('尚未設定試算表 API URL', 'warning');
+                return;
+            }
+            const btn = document.getElementById('sync-btn');
+            const icon = document.getElementById('sync-icon');
+            btn.disabled = true;
+            icon.classList.add('animate-spin');
+            
+            try {
+                const response = await fetch(gasWebappUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({ data: window.masterData })
+                });
+                window.showToast('已同步至 Google 試算表', 'success');
+            } catch (e) {
+                window.showToast('同步試算表失敗，請檢查 API', 'warning');
             } finally {
-                isSyncing = false;
-                if (btn && icon) { btn.disabled = false; icon.classList.remove('animate-spin'); }
+                btn.disabled = false;
+                icon.classList.remove('animate-spin');
             }
         };
 
@@ -402,7 +403,8 @@
             if (!body || !historyBody) return;
 
             const activeRecords = window.masterData.filter(d => d.status !== '已結案');
-            document.getElementById('active-count').innerText = activeRecords.length;
+            const countEl = document.getElementById('active-count');
+            if (countEl) countEl.innerText = activeRecords.length;
 
             body.innerHTML = activeRecords.map(item => {
                 const itemStr = item.items.map(i => `<span class="text-zinc-300 font-bold">${i.n}</span> <span class="text-yellow-400">x${i.q}${i.u}</span>`).join('<br>');
@@ -411,69 +413,132 @@
                 let actionBtn = '';
                 const role = window.currentUserRole;
 
+                // --- 流程控制 ---
                 if (role === 'factory') {
-                    if (item.status === '待處理') actionBtn = `<button onclick="window.updateStatus('${item.id}', '配送中')" class="bg-orange-600 px-4 py-2 rounded-xl text-[10px] font-black">開始配送</button>`;
-                    else if (item.status === '配送中') actionBtn = `<button onclick="window.updateStatus('${item.id}', '已送達')" class="bg-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black">標記送達</button>`;
-                    else if (item.status === '待載回') actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-black">已載回結案</button>`;
-                } else if (role === 'procure' && item.status === '待採購確認') {
-                    actionBtn = `<button onclick="window.updateStatus('${item.id}', '待載回')" class="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black animate-pulse">確認載回</button>`;
+                    if (item.status === '待處理') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '配送中')" class="bg-orange-600 px-4 py-2 rounded-xl text-[10px] font-black">開始配送</button>`;
+                    } else if (item.status === '配送中') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已送達')" class="bg-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black">標記送達</button>`;
+                    } else if (item.status === '待載回') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '載回中')" class="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-black">載回運輸中</button>`;
+                    } else if (item.status === '載回中') {
+                        actionBtn = `<span class="text-[10px] text-zinc-500 font-bold italic">等待倉管入庫</span>`;
+                    }
+                } 
+                else if (role === 'procure') {
+                    if (item.status === '待採購確認') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '待載回')" class="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black italic animate-pulse">確認載回</button>`;
+                    }
+                }
+                else if (role === 'warehouse') {
+                    // 加工件回來時，必須由倉管部入庫結案
+                    if (item.status === '載回中') {
+                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="bg-indigo-600 px-4 py-2 rounded-xl text-[10px] font-black">確認入庫結案</button>`;
+                    }
                 }
                 
+                // 管理員擁有所有刪除與強制結案權限
                 if (role === 'admin') {
-                    actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="text-zinc-500 hover:text-emerald-400 text-[10px] underline mr-2">結案</button><button onclick="window.deleteRecord('${item.id}')" class="p-2 text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+                    actionBtn = `
+                        <div class="flex items-center space-x-2">
+                            <button onclick="window.updateStatus('${item.id}', '已結案')" class="text-zinc-500 hover:text-emerald-400 text-[10px] font-bold underline">結案</button>
+                            <button onclick="window.deleteRecord('${item.id}')" class="p-2 text-zinc-600 hover:text-red-500 transition-colors">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    `;
                 }
 
                 let statusClass = 'text-zinc-400 border-zinc-700';
                 if (item.status === '待採購確認') statusClass = 'text-orange-400 border-orange-700 bg-orange-900/20';
                 if (item.status === '待載回') statusClass = 'text-yellow-400 border-yellow-700 bg-yellow-900/20';
+                if (item.status === '載回中') statusClass = 'text-blue-400 border-blue-700 bg-blue-900/20';
 
-                return `<tr class="hover:bg-zinc-900/40 transition-colors">
-                    <td class="px-6 py-6"><div class="font-mono text-yellow-500 font-black">${item.id}</div><div class="text-[9px] text-zinc-600 font-bold uppercase mt-1">${item.type}</div></td>
-                    <td class="px-6 py-6"><span class="px-3 py-1 rounded-full bg-zinc-800 text-[10px] font-black border ${statusClass}">${item.status}</span></td>
+                return `<tr class="group hover:bg-zinc-900/40 transition-colors">
+                    <td class="px-6 py-6">
+                        <div class="font-mono text-yellow-500 font-black">${item.id}</div>
+                        <div class="text-[9px] text-zinc-600 font-bold uppercase mt-1">${item.type}</div>
+                    </td>
+                    <td class="px-6 py-6">
+                        <span class="px-3 py-1 rounded-full bg-zinc-800 text-[10px] font-black border ${statusClass}">
+                            ${item.status}
+                        </span>
+                    </td>
                     <td class="px-6 py-6 font-bold text-white">${item.vendor}</td>
-                    <td class="px-6 py-6"><div>${itemStr}</div>${noteStr}</td>
+                    <td class="px-6 py-6">
+                        <div>${itemStr}</div>
+                        ${noteStr}
+                    </td>
                     <td class="px-6 py-6">${actionBtn}</td>
                 </tr>`;
             }).join('');
 
-            const historyRecords = window.masterData.filter(d => d.status === '已結案').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-            historyBody.innerHTML = historyRecords.map(item => `
-                <tr class="text-zinc-500 text-xs">
+            // 渲染歷史紀錄
+            const historyRecords = window.masterData.filter(d => d.status === '已結案')
+                .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+            historyBody.innerHTML = historyRecords.map(item => {
+                const itemStr = item.items.map(i => `${i.n} x${i.q}${i.u}`).join(', ');
+                const dateStr = item.completedAt ? new Date(item.completedAt).toLocaleString() : '-';
+                
+                let adminTool = '-';
+                if (window.currentUserRole === 'admin') {
+                    adminTool = `
+                        <button onclick="window.deleteRecord('${item.id}')" class="text-zinc-600 hover:text-red-500">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    `;
+                }
+
+                return `<tr class="text-zinc-500 text-xs">
                     <td class="px-6 py-4 font-mono font-bold">${item.id}</td>
                     <td class="px-6 py-4">${item.type}</td>
                     <td class="px-6 py-4 font-bold text-zinc-400">${item.vendor}</td>
-                    <td class="px-6 py-4 text-[10px]">${item.completedAt ? new Date(item.completedAt).toLocaleString() : '-'}</td>
-                    <td class="px-6 py-4 truncate max-w-xs">${item.items.map(i => `${i.n} x${i.q}${i.u}`).join(', ')}</td>
-                    <td class="px-6 py-4">${window.currentUserRole === 'admin' ? `<button onclick="window.deleteRecord('${item.id}')" class="text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '-'}</td>
-                </tr>`).join('');
+                    <td class="px-6 py-4 text-[10px]">${dateStr}</td>
+                    <td class="px-6 py-4 truncate max-w-xs">${itemStr}</td>
+                    <td class="px-6 py-4">${adminTool}</td>
+                </tr>`;
+            }).join('');
 
             if (window.lucide) window.lucide.createIcons();
         };
 
+        // 初始化 Firebase
         async function initializeSystem() {
             try {
-                if (typeof __firebase_config === 'undefined') return;
+                if (typeof __firebase_config === 'undefined') {
+                    window.showToast("環境未設定資料庫，功能將受限", "danger");
+                    return;
+                }
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-                else await signInAnonymously(auth);
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else { await signInAnonymously(auth); }
+                };
+                await initAuth();
 
                 onAuthStateChanged(auth, (user) => {
                     userAuth = user;
                     if (user) {
                         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                        // 即時監聽雲端資料，解決紀錄消失問題
                         onSnapshot(docRef, (snap) => {
-                            if (snap.exists() && !isSyncing) {
+                            if (snap.exists()) {
                                 window.masterData = snap.data().records || [];
                                 if (window.currentUserRole) window.renderTables();
                             }
-                        });
+                        }, (error) => console.error("Snapshot error:", error));
                     }
                 });
-            } catch (err) { console.error(err); }
+            } catch (err) { 
+                console.error(err); 
+                window.showToast("資料庫連接失敗", "danger");
+            }
         }
 
         window.addEventListener('load', () => {
