@@ -1,594 +1,410 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>何鑫/薪昌載運系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
-        body { 
-            font-family: 'Noto Sans TC', sans-serif; 
-            background-color: #000; 
-            margin: 0;
-            padding: 0;
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
+import { 
+  Truck, 
+  Plus, 
+  LogOut, 
+  RefreshCw, 
+  Trash2, 
+  CheckCircle2, 
+  Clock, 
+  ChevronRight,
+  Package,
+  UserCheck,
+  ClipboardList
+} from 'lucide-react';
+
+// 請確保此 URL 與你的 Google Apps Script 部署網址一致
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec";
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null); 
+  const [records, setRecords] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    type: '加工件',
+    vendor: '',
+    item: '',
+    qty: '',
+    unit: '件',
+    note: ''
+  });
+
+  // Firebase 初始化
+  const firebaseConfig = useMemo(() => {
+    return typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+  }, []);
+
+  const firebaseApp = useMemo(() => firebaseConfig ? initializeApp(firebaseConfig) : null, [firebaseConfig]);
+  const db = useMemo(() => firebaseApp ? getFirestore(firebaseApp) : null, [firebaseApp]);
+  const auth = useMemo(() => firebaseApp ? getAuth(firebaseApp) : null, [firebaseApp]);
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v3';
+
+  // 1. 身份驗證監聽 (遵循 RULE 3)
+  useEffect(() => {
+    if (!auth) return;
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
         }
+      } catch (err) {
+        console.error("Auth Error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, [auth]);
+
+  // 2. 實時監聽 Firestore 資料 (修正路徑符合 RULE 1: /artifacts/{appId}/public/data/{document})
+  useEffect(() => {
+    if (!user || !db) return;
+    
+    // 修正路徑：artifacts (col) -> appId (doc) -> public (col) -> data (doc) -> master_list (sub-col) 
+    // 或者更標準的：artifacts (col) -> appId (doc) -> public_data (col) -> master_list (doc)
+    // 這裡我們採用符合 6 個片段的結構：artifacts/appId/public/data/list/main
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master_list');
+    
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setRecords(docSnap.data().items || []);
+      }
+    }, (err) => {
+      console.error("Firestore Listen Error:", err);
+    });
+    
+    return () => unsubscribe();
+  }, [user, db, appId]);
+
+  // 同步到 Google 試算表
+  const syncToGAS = async (payload) => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return true;
+    } catch (e) {
+      console.error("GAS Sync Failed", e);
+      return false;
+    }
+  };
+
+  // 儲存到 Firebase
+  const saveToFirebase = async (newList) => {
+    if (!db || !user) return;
+    // 使用 6 段偶數路徑
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master_list');
+    try {
+      await setDoc(docRef, { 
+        items: newList, 
+        lastUpdate: Date.now(),
+        updatedBy: user.uid 
+      });
+    } catch (err) {
+      console.error("Save to Firebase failed:", err);
+    }
+  };
+
+  const handleLogin = (r) => setRole(String(r)); // 確保 role 是字串
+  const handleLogout = () => {
+    setRole(null);
+    if (auth) auth.signOut();
+  };
+
+  // 新增單據
+  const handleSubmit = async () => {
+    if (!formData.vendor || !formData.item || !formData.qty) return;
+    setLoading(true);
+
+    const newId = `HC-${Date.now().toString().slice(-6)}`;
+    const timeStr = new Date().toLocaleString('zh-TW', { hour12: false });
+    
+    const newRecord = {
+      ...formData,
+      id: newId,
+      time: timeStr,
+      status: '待處理',
+      creator: String(role),
+      timestamp: Date.now(),
+      completedAt: null
+    };
+
+    // 同步到試算表
+    await syncToGAS({ action: "CREATE", ...newRecord });
+
+    // 同步到 Firebase
+    const newList = [newRecord, ...records];
+    await saveToFirebase(newList);
+    
+    setFormData({ type: '加工件', vendor: '', item: '', qty: '', unit: '件', note: '' });
+    setIsModalOpen(false);
+    setLoading(false);
+  };
+
+  // 更新狀態流程
+  const updateStatus = async (id, nextStatus) => {
+    setLoading(true);
+    const updatedRecords = records.map(r => {
+      if (r.id === id) {
+        let finalStatus = nextStatus;
+        let completedAt = r.completedAt;
         
-        .login-card {
-            background-color: #1a1a1a;
-            border-radius: 50px;
-            padding: 60px 40px;
-            width: 100%;
-            max-width: 440px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        
-        .login-btn {
-            background-color: #2a2a2a;
-            color: #ffffff;
-            font-weight: 700;
-            transition: all 0.2s ease;
-            border: none;
-            width: 100%;
-            padding: 20px 0;
-            border-radius: 20px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            margin-bottom: 16px;
-        }
-        
-        .login-btn:hover { 
-            background-color: #333; 
-            transform: translateY(-2px);
-        }
-        
-        .admin-btn {
-            background-color: #ffcc00;
-            color: #000000;
-            font-weight: 900;
-            width: 100%;
-            padding: 20px 0;
-            border-radius: 20px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 10px 20px rgba(255, 204, 0, 0.2);
-            transition: all 0.2s ease;
-            margin-top: 8px;
+        if (nextStatus === '已送達') {
+          if (r.type === '銷售') {
+            finalStatus = '已結案';
+            completedAt = Date.now();
+          } else {
+            finalStatus = '待採購確認'; 
+          }
+        } else if (nextStatus === '已結案') {
+          completedAt = Date.now();
         }
 
-        .icon-box {
-            background-color: #ffcc00;
-            width: 100px;
-            height: 100px;
-            border-radius: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 30px auto;
-        }
+        return { ...r, status: finalStatus, completedAt };
+      }
+      return r;
+    });
 
-        .custom-scroll::-webkit-scrollbar { width: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
-        
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .toast-item { animation: slideIn 0.3s ease-out forwards; }
+    const target = updatedRecords.find(r => r.id === id);
+    await syncToGAS({ action: "UPDATE_STATUS", id, status: target.status });
+    await saveToFirebase(updatedRecords);
+    setLoading(false);
+  };
 
-        /* 載入中遮罩 */
-        #loading-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-    </style>
-</head>
-<body class="h-screen overflow-hidden text-slate-200">
+  const deleteRecord = async (id) => {
+    if (!window.confirm(`確定要刪除單據 ${id} 嗎？`)) return;
+    setLoading(true);
+    await syncToGAS({ action: "DELETE", id });
+    const newList = records.filter(r => r.id !== id);
+    await saveToFirebase(newList);
+    setLoading(false);
+  };
 
-    <!-- 載入中動畫 -->
-    <div id="loading-overlay">
-        <div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-yellow-400 font-bold animate-pulse">正在同步雲端試算表...</p>
-    </div>
+  const activeRecords = records.filter(r => r && r.status !== '已結案');
+  const historyRecords = records.filter(r => r && r.status === '已結案').sort((a,b) => b.completedAt - a.completedAt);
 
-    <!-- 通知中心 -->
-    <div id="toast-container" class="fixed top-6 right-6 z-[300] flex flex-col gap-3 w-72 pointer-events-none"></div>
-
-    <!-- 登入頁面 -->
-    <div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black">
-        <div class="login-card text-center">
-            <div class="icon-box mb-8">
-                <i data-lucide="truck" class="w-14 h-14 text-black"></i>
-            </div>
-            <h1 class="text-4xl font-black text-white tracking-tighter mb-2">何鑫 / 薪昌</h1>
-            <p class="text-[#ffcc00] font-bold text-sm tracking-[0.4em] uppercase mb-12">載運調度管理系統</p>
-            
-            <div class="flex flex-col">
-                <button onclick="window.login('procure')" class="login-btn">採購/業務部</button>
-                <button onclick="window.login('factory')" class="login-btn">廠務調度</button>
-                <button onclick="window.login('warehouse')" class="login-btn">倉管部</button>
-                <button onclick="window.login('admin')" class="admin-btn">系統管理員</button>
-            </div>
+  if (!role) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6 font-sans">
+        <div className="bg-zinc-900 w-full max-w-sm rounded-[3rem] p-12 text-center border border-zinc-800 shadow-2xl">
+          <div className="w-24 h-24 bg-yellow-400 rounded-[2rem] flex items-center justify-center mx-auto mb-10 shadow-xl shadow-yellow-400/20 rotate-3">
+            <Truck size={48} className="text-black" />
+          </div>
+          <h1 className="text-3xl font-black text-white mb-2 tracking-tighter">何鑫 / 薪昌</h1>
+          <p className="text-yellow-500 font-bold tracking-[0.4em] text-[10px] mb-12 uppercase">載運調度管理系統</p>
+          <div className="grid gap-3">
+            {[
+              { id: 'procure', label: '採購 / 業務部' },
+              { id: 'factory', label: '廠務調度' },
+              { id: 'warehouse', label: '倉管部' },
+              { id: 'admin', label: '系統管理員' }
+            ].map((r) => (
+              <button 
+                key={r.id}
+                onClick={() => handleLogin(r.id)}
+                className="w-full py-4 rounded-2xl bg-zinc-800 text-zinc-300 font-bold hover:bg-zinc-700 hover:text-white transition-all border border-zinc-700 active:scale-95"
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
-    </div>
+      </div>
+    );
+  }
 
-    <!-- 主頁面 -->
-    <div id="main-app" class="flex flex-col h-screen hidden">
-        <header class="bg-black border-b border-zinc-800 px-8 py-4 flex justify-between items-center z-50">
-            <div class="flex items-center space-x-6">
-                <div class="flex flex-col">
-                    <h2 id="page-title" class="text-xl font-black text-white tracking-tight">載運調度管理系統</h2>
-                    <div class="flex items-center space-x-2">
-                        <span id="user-role-badge" class="text-[10px] bg-yellow-400 text-black px-2 py-0.5 rounded font-black uppercase tracking-widest">角色</span>
-                        <span class="text-[10px] text-zinc-600 font-bold uppercase" id="current-time-display"></span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="flex items-center space-x-4">
-                <button id="sync-btn" onclick="window.manualSync()" class="flex items-center space-x-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-bold text-zinc-300 hover:bg-zinc-800">
-                    <i id="sync-icon" data-lucide="refresh-cw" class="w-3 h-3"></i>
-                    <span>同步雲端</span>
-                </button>
-                <button id="main-action-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center hidden" onclick="window.openModal()">
-                    <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新增單據
-                </button>
-                <button onclick="window.logout()" class="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-500 transition-all">
-                    <i data-lucide="log-out" class="w-5 h-5"></i>
-                </button>
-            </div>
-        </header>
+  // 角色名稱映射（避免渲染物件）
+  const roleNameMap = {
+    procure: '採購業務',
+    factory: '廠務部',
+    warehouse: '倉管部',
+    admin: '管理員'
+  };
 
-        <main class="flex-1 overflow-y-auto custom-scroll p-6 bg-[#050505] space-y-8">
-            <section class="flex flex-col min-w-0">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-black text-white flex items-center">
-                        <span class="w-1.5 h-6 bg-yellow-400 rounded-full mr-3"></span>
-                        當前調度清單 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
-                    </h3>
-                </div>
-                <div class="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden flex flex-col">
-                    <table class="w-full text-left border-separate border-spacing-0">
-                        <thead class="bg-zinc-900 border-b border-zinc-800">
-                            <tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                                <th class="px-6 py-4">單號/類型</th>
-                                <th class="px-6 py-4">狀態</th>
-                                <th class="px-6 py-4">目的地</th>
-                                <th class="px-6 py-4">內容與備註</th>
-                                <th class="px-6 py-4">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="active-body" class="divide-y divide-zinc-800/50"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="flex flex-col min-w-0 opacity-80">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-black text-zinc-400 flex items-center">
-                        <span class="w-1.5 h-6 bg-zinc-700 rounded-full mr-3"></span>
-                        歷史結案紀錄
-                    </h3>
-                </div>
-                <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-[2rem] overflow-hidden flex flex-col">
-                    <table class="w-full text-left border-separate border-spacing-0">
-                        <thead class="bg-zinc-900/50">
-                            <tr class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">
-                                <th class="px-6 py-4">單號</th>
-                                <th class="px-6 py-4">類型</th>
-                                <th class="px-6 py-4">目的地</th>
-                                <th class="px-6 py-4">完成時間</th>
-                                <th class="px-6 py-4">內容</th>
-                                <th class="px-6 py-4">管理</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-body" class="divide-y divide-zinc-800/30"></tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- 彈窗: 新增單據 -->
-    <div id="modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm hidden flex items-center justify-center z-[100] p-4">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
-            <h3 class="text-2xl font-black text-white mb-6">新增調度單</h3>
-            <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">單據類型</label>
-                        <select id="input-type" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                            <option value="加工件">加工件</option>
-                            <option value="銷售">銷售</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
-                        <input type="text" id="input-vendor" placeholder="工廠或客戶名稱" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">品項名稱</label>
-                    <input type="text" id="input-item-name" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">數量</label>
-                        <input type="number" id="input-item-qty" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">單位</label>
-                        <input type="text" id="input-item-unit" value="件" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">備註</label>
-                    <textarea id="input-note" rows="2" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none resize-none" placeholder="輸入額外說明..."></textarea>
-                </div>
-            </div>
-            <div class="mt-8 flex gap-3">
-                <button onclick="window.closeModal()" class="flex-1 py-4 text-zinc-500 font-bold">取消</button>
-                <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈單據</button>
-            </div>
+  return (
+    <div className="min-h-screen bg-[#050505] text-zinc-400 flex flex-col font-sans text-sm">
+      {loading && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center">
+          <RefreshCw className="text-yellow-400 animate-spin mb-4" size={48} />
+          <p className="text-yellow-400 font-black tracking-widest text-sm animate-pulse">更新中...</p>
         </div>
+      )}
+
+      <header className="px-8 py-6 bg-black/40 border-b border-zinc-800/50 flex justify-between items-center sticky top-0 backdrop-blur-xl z-40">
+        <div className="flex items-center space-x-4">
+          <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center">
+            <Truck size={20} className="text-black" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-white tracking-tight underline decoration-yellow-400 decoration-4 underline-offset-4">何鑫調度</h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">
+              當前角色: <span className="text-yellow-500">{roleNameMap[role] || role}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          {(role === 'procure' || role === 'admin') && (
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center shadow-lg transition-all active:scale-95"
+            >
+              <Plus size={16} className="mr-1.5" /> 新增調度
+            </button>
+          )}
+          <button onClick={handleLogout} className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-600 hover:text-red-500 transition-colors">
+            <LogOut size={20} />
+          </button>
+        </div>
+      </header>
+
+      <main className="p-8 space-y-12 max-w-7xl mx-auto w-full">
+        {/* 當前任務列表 */}
+        <section>
+          <h3 className="text-white font-black mb-6 flex items-center">
+            <span className="w-2 h-2 bg-yellow-400 rounded-full mr-3"></span>
+            執行中的任務 ({activeRecords.length})
+          </h3>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-x-auto">
+            <table className="w-full text-left min-w-[800px]">
+              <thead>
+                <tr className="text-[10px] font-black text-zinc-600 uppercase tracking-widest border-b border-zinc-800">
+                  <th className="px-6 py-4">單號</th>
+                  <th className="px-6 py-4">狀態</th>
+                  <th className="px-6 py-4">目的地</th>
+                  <th className="px-6 py-4">品項</th>
+                  <th className="px-6 py-4 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {activeRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-20 text-center">
+                       <div className="flex flex-col items-center justify-center opacity-20">
+                          <ClipboardList size={40} className="mb-2" />
+                          <p className="text-xs font-bold italic">目前無進行中的調度單</p>
+                       </div>
+                    </td>
+                  </tr>
+                ) : activeRecords.map(item => (
+                  <tr key={item.id} className="hover:bg-white/[0.02]">
+                    <td className="px-6 py-5">
+                      <div className="text-yellow-500 font-mono font-bold">{item.id}</div>
+                      <div className="text-[10px] text-zinc-600">{item.type}</div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black border ${
+                        item.status === '待處理' ? 'border-zinc-700 text-zinc-500' :
+                        item.status === '配送中' ? 'border-blue-900 text-blue-500 bg-blue-500/5' :
+                        'border-orange-900 text-orange-500 bg-orange-500/5'
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5 text-zinc-200 font-bold">{item.vendor}</td>
+                    <td className="px-6 py-5 text-zinc-400">
+                      {item.item} <span className="text-yellow-500/50">x {item.qty} {item.unit}</span>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                       <div className="flex justify-end gap-2">
+                        {role === 'factory' && (
+                          <>
+                            {item.status === '待處理' && <button onClick={() => updateStatus(item.id, '配送中')} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">配送</button>}
+                            {item.status === '配送中' && <button onClick={() => updateStatus(item.id, '已送達')} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold">送達</button>}
+                          </>
+                        )}
+                        {role === 'procure' && item.status === '待採購確認' && (
+                           <button onClick={() => updateStatus(item.id, '待載回')} className="bg-yellow-500 text-black px-3 py-1.5 rounded-lg text-[10px] font-bold">通知載回</button>
+                        )}
+                        {role === 'admin' && (
+                          <button onClick={() => deleteRecord(item.id)} className="text-zinc-600 hover:text-red-500"><Trash2 size={16}/></button>
+                        )}
+                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* 歷史紀錄 */}
+        <section className="opacity-50">
+           <h3 className="text-zinc-500 font-bold mb-4 flex items-center text-xs uppercase tracking-widest">歷史結案紀錄</h3>
+           <div className="bg-zinc-900/20 border border-zinc-800/50 rounded-2xl p-4">
+              {historyRecords.length === 0 ? (
+                <p className="text-center py-4 text-xs italic text-zinc-700">尚無歷史資料</p>
+              ) : historyRecords.slice(0, 5).map(h => (
+                <div key={h.id} className="flex justify-between items-center py-3 border-b border-zinc-800 last:border-0 text-xs font-medium">
+                  <span className="text-zinc-600 font-mono">{h.id}</span>
+                  <span className="text-zinc-400">{h.vendor} - {h.item}</span>
+                  <span className="text-zinc-700">{new Date(h.completedAt).toLocaleDateString()}</span>
+                </div>
+              ))}
+           </div>
+        </section>
+      </main>
+
+      {/* 新增 Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl">
+            <h3 className="text-2xl font-black text-white mb-8 tracking-tighter">新增調度</h3>
+            <div className="space-y-4">
+              <select 
+                value={formData.type}
+                onChange={e => setFormData({...formData, type: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-bold outline-none"
+              >
+                <option value="加工件">加工件 (需載回)</option>
+                <option value="銷售">銷售 (直接送達)</option>
+              </select>
+              <input 
+                placeholder="目的地 / 廠商名稱"
+                value={formData.vendor}
+                onChange={e => setFormData({...formData, vendor: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-bold outline-none"
+              />
+              <input 
+                placeholder="品項名稱"
+                value={formData.item}
+                onChange={e => setFormData({...formData, item: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-bold outline-none"
+              />
+              <div className="flex gap-3">
+                <input 
+                  type="number"
+                  placeholder="數量"
+                  value={formData.qty}
+                  onChange={e => setFormData({...formData, qty: e.target.value})}
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-bold outline-none"
+                />
+                <input 
+                  placeholder="單位"
+                  value={formData.unit}
+                  onChange={e => setFormData({...formData, unit: e.target.value})}
+                  className="w-32 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white font-bold outline-none"
+                />
+              </div>
+            </div>
+            <div className="mt-8 flex gap-3">
+              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-zinc-500 font-bold">取消</button>
+              <button onClick={handleSubmit} className="flex-1 bg-yellow-400 text-black py-4 rounded-xl font-black shadow-lg shadow-yellow-400/10">提交單據</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-
-    <script type="module">
-        // --- 設定區塊 ---
-        // 請確保此網址正確，且 GAS 已部署為「所有人」
-        const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
-        
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        let db, auth, userAuth;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v2';
-        window.masterData = [];
-        window.currentUserRole = null;
-        let isSyncing = false;
-
-        // 通用的通知函數
-        window.showToast = (msg, type = 'info') => {
-            const container = document.getElementById('toast-container');
-            if (!container) return;
-            const toast = document.createElement('div');
-            const bg = type === 'success' ? 'bg-emerald-600' : (type === 'warning' ? 'bg-orange-600' : (type === 'danger' ? 'bg-red-600' : 'bg-zinc-800'));
-            toast.className = `toast-item ${bg} text-white p-4 rounded-2xl shadow-xl flex items-center space-x-3 pointer-events-auto mb-2 transition-opacity duration-300`;
-            toast.innerHTML = `<i data-lucide="bell" class="w-4 h-4"></i><span class="text-xs font-bold">${msg}</span>`;
-            container.appendChild(toast);
-            if (window.lucide) window.lucide.createIcons();
-            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
-        };
-
-        // --- 與 Google Apps Script 通訊的核心函數 ---
-        const syncToGoogleSheets = async (payload) => {
-            try {
-                // 使用 no-cors 雖然無法讀取回傳值，但能成功送出資料
-                // 為了獲取正確回傳，這裡用標準 fetch
-                await fetch(gasWebappUrl, {
-                    method: 'POST',
-                    mode: 'no-cors', // 處理 GAS 跳轉
-                    cache: 'no-cache',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                return true;
-            } catch (err) {
-                console.error("GAS Sync Error:", err);
-                return false;
-            }
-        };
-
-        window.login = (role) => {
-            window.currentUserRole = role;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
-            document.getElementById('user-role-badge').innerText = roles[role] || role;
-            document.getElementById('current-time-display').innerText = new Date().toLocaleDateString();
-            document.getElementById('main-action-btn').classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
-            window.renderTables();
-            window.showToast(`歡迎回來，${roles[role]}`, 'success');
-        };
-
-        window.logout = () => {
-            window.currentUserRole = null;
-            document.getElementById('main-app').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-        };
-
-        window.openModal = () => document.getElementById('modal').classList.remove('hidden');
-        window.closeModal = () => document.getElementById('modal').classList.add('hidden');
-
-        window.saveData = async () => {
-            const type = document.getElementById('input-type').value;
-            const vendor = document.getElementById('input-vendor').value;
-            const name = document.getElementById('input-item-name').value;
-            const qty = document.getElementById('input-item-qty').value;
-            const unit = document.getElementById('input-item-unit').value;
-            const note = document.getElementById('input-note').value;
-
-            if(!vendor || !name || !qty) {
-                window.showToast('請填寫完整資訊', 'warning');
-                return;
-            }
-
-            const loader = document.getElementById('loading-overlay');
-            loader.style.display = 'flex';
-
-            const newId = 'HC-' + Date.now().toString().slice(-6);
-            const timestamp = new Date().toLocaleString();
-
-            const newRecord = {
-                id: newId,
-                type,
-                status: '待處理',
-                vendor,
-                note,
-                items: [{ n: name, q: qty, u: unit }],
-                timestamp: Date.now(),
-                completedAt: null,
-                creator: window.currentUserRole
-            };
-
-            // 1. 同步到試算表 (GAS)
-            const gasPayload = {
-                action: "CREATE",
-                id: newId,
-                time: timestamp,
-                type: type,
-                vendor: vendor,
-                item: name,
-                qty: qty,
-                unit: unit,
-                note: note,
-                creator: window.currentUserRole
-            };
-            
-            await syncToGoogleSheets(gasPayload);
-
-            // 2. 更新本地與 Firebase
-            window.masterData = [newRecord, ...window.masterData];
-            window.renderTables();
-            window.closeModal();
-            window.showToast(`單據 ${newId} 已同步至試算表`, 'success');
-            
-            await window.manualSync(true);
-            
-            // 清除表單
-            document.getElementById('input-vendor').value = '';
-            document.getElementById('input-item-name').value = '';
-            document.getElementById('input-item-qty').value = '';
-            document.getElementById('input-note').value = '';
-            loader.style.display = 'none';
-        };
-
-        window.deleteRecord = async (id) => {
-            if(!confirm(`確定要刪除單據 ${id} 嗎？這也會同步刪除試算表資料。`)) return;
-            
-            const loader = document.getElementById('loading-overlay');
-            loader.style.display = 'flex';
-
-            const index = window.masterData.findIndex(d => d.id === id);
-            if (index === -1) {
-                loader.style.display = 'none';
-                return;
-            }
-
-            // 同步 GAS 刪除
-            await syncToGoogleSheets({ action: "DELETE", id: id });
-
-            window.masterData.splice(index, 1);
-            window.renderTables();
-            window.showToast(`單據 ${id} 已被刪除`, 'danger');
-            await window.manualSync(true);
-            loader.style.display = 'none';
-        };
-
-        window.updateStatus = async (id, newStatus) => {
-            const loader = document.getElementById('loading-overlay');
-            loader.style.display = 'flex';
-
-            const index = window.masterData.findIndex(d => d.id === id);
-            if (index === -1) {
-                loader.style.display = 'none';
-                return;
-            }
-
-            const record = window.masterData[index];
-            let finalStatus = newStatus;
-
-            if (newStatus === '已送達' && record.type === '加工件') {
-                finalStatus = '待採購確認';
-            } else if (newStatus === '已送達' || newStatus === '已結案') {
-                finalStatus = '已結案';
-                window.masterData[index].completedAt = Date.now();
-            }
-
-            // 同步 GAS 狀態更新
-            await syncToGoogleSheets({ action: "UPDATE_STATUS", id: id, status: finalStatus });
-
-            window.masterData[index].status = finalStatus;
-            window.renderTables();
-            window.showToast(`${id} 狀態已更新為 ${finalStatus}`, 'success');
-            await window.manualSync(true);
-            loader.style.display = 'none';
-        };
-
-        window.manualSync = async (isAuto = false) => {
-            if (isSyncing) return;
-            const btn = document.getElementById('sync-btn');
-            const icon = document.getElementById('sync-icon');
-            isSyncing = true;
-            if (btn && icon) { btn.disabled = true; icon.classList.add('animate-spin'); }
-
-            if (!userAuth || !db) {
-                isSyncing = false;
-                if (btn && icon) { btn.disabled = false; icon.classList.remove('animate-spin'); }
-                return;
-            }
-
-            try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-                const snap = await getDoc(docRef);
-                let finalData = [...window.masterData];
-                
-                if (snap.exists()) {
-                    const cloudRecords = snap.data().records || [];
-                    const localIds = new Set(window.masterData.map(r => r.id));
-                    cloudRecords.forEach(cr => {
-                        if (!localIds.has(cr.id)) finalData.push(cr);
-                    });
-                    finalData.sort((a, b) => b.timestamp - a.timestamp);
-                }
-
-                await setDoc(docRef, { records: finalData, lastUpdate: Date.now() });
-                window.masterData = finalData;
-                window.renderTables();
-                if (!isAuto) window.showToast('雲端快取同步成功！', 'success');
-            } catch (e) {
-                console.error(e);
-                window.showToast('Firebase 同步失敗', 'warning');
-            } finally {
-                isSyncing = false;
-                if (btn && icon) { btn.disabled = false; icon.classList.remove('animate-spin'); }
-            }
-        };
-
-        window.renderTables = () => {
-            const body = document.getElementById('active-body');
-            const historyBody = document.getElementById('history-body');
-            if (!body || !historyBody) return;
-
-            const activeRecords = window.masterData.filter(d => d.status !== '已結案');
-            const countEl = document.getElementById('active-count');
-            if (countEl) countEl.innerText = activeRecords.length;
-
-            body.innerHTML = activeRecords.map(item => {
-                const itemStr = item.items.map(i => `<span class="text-zinc-300 font-bold">${i.n}</span> <span class="text-yellow-400">x${i.q}${i.u}</span>`).join('<br>');
-                const noteStr = item.note ? `<div class="mt-2 text-[10px] text-zinc-500 italic border-l-2 border-zinc-700 pl-2">備註: ${item.note}</div>` : '';
-                
-                let actionBtn = '';
-                const role = window.currentUserRole;
-
-                if (role === 'factory') {
-                    if (item.status === '待處理') {
-                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '配送中')" class="bg-orange-600 px-4 py-2 rounded-xl text-[10px] font-black">開始配送</button>`;
-                    } else if (item.status === '配送中') {
-                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已送達')" class="bg-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black">標記送達</button>`;
-                    } else if (item.status === '待載回') {
-                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '已結案')" class="bg-blue-600 px-4 py-2 rounded-xl text-[10px] font-black">已載回結案</button>`;
-                    }
-                } else if (role === 'procure') {
-                    if (item.status === '待採購確認') {
-                        actionBtn = `<button onclick="window.updateStatus('${item.id}', '待載回')" class="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black italic animate-pulse">確認載回</button>`;
-                    }
-                }
-                
-                if (role === 'admin') {
-                    actionBtn = `
-                        <div class="flex items-center space-x-2">
-                            <button onclick="window.updateStatus('${item.id}', '已結案')" class="text-zinc-500 hover:text-emerald-400 text-[10px] font-bold underline">結案</button>
-                            <button onclick="window.deleteRecord('${item.id}')" class="p-2 text-zinc-600 hover:text-red-500 transition-colors">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        </div>
-                    `;
-                }
-
-                let statusClass = 'text-zinc-400 border-zinc-700';
-                if (item.status === '待採購確認') statusClass = 'text-orange-400 border-orange-700 bg-orange-900/20';
-                if (item.status === '待載回') statusClass = 'text-yellow-400 border-yellow-700 bg-yellow-900/20';
-
-                return `<tr class="group hover:bg-zinc-900/40 transition-colors">
-                    <td class="px-6 py-6">
-                        <div class="font-mono text-yellow-500 font-black">${item.id}</div>
-                        <div class="text-[9px] text-zinc-600 font-bold uppercase mt-1">${item.type}</div>
-                    </td>
-                    <td class="px-6 py-6">
-                        <span class="px-3 py-1 rounded-full bg-zinc-800 text-[10px] font-black border ${statusClass}">
-                            ${item.status}
-                        </span>
-                    </td>
-                    <td class="px-6 py-6 font-bold text-white">${item.vendor}</td>
-                    <td class="px-6 py-6">
-                        <div>${itemStr}</div>
-                        ${noteStr}
-                    </td>
-                    <td class="px-6 py-6">${actionBtn}</td>
-                </tr>`;
-            }).join('');
-
-            const historyRecords = window.masterData.filter(d => d.status === '已結案')
-                .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-
-            historyBody.innerHTML = historyRecords.map(item => {
-                const itemStr = item.items.map(i => `${i.n} x${i.q}${i.u}`).join(', ');
-                const dateStr = item.completedAt ? new Date(item.completedAt).toLocaleString() : '-';
-                
-                let adminTool = '-';
-                if (window.currentUserRole === 'admin') {
-                    adminTool = `
-                        <button onclick="window.deleteRecord('${item.id}')" class="text-zinc-600 hover:text-red-500">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    `;
-                }
-
-                return `<tr class="text-zinc-500 text-xs">
-                    <td class="px-6 py-4 font-mono font-bold">${item.id}</td>
-                    <td class="px-6 py-4">${item.type}</td>
-                    <td class="px-6 py-4 font-bold text-zinc-400">${item.vendor}</td>
-                    <td class="px-6 py-4 text-[10px]">${dateStr}</td>
-                    <td class="px-6 py-4 truncate max-w-xs">${itemStr}</td>
-                    <td class="px-6 py-4">${adminTool}</td>
-                </tr>`;
-            }).join('');
-
-            if (window.lucide) window.lucide.createIcons();
-        };
-
-        async function initializeSystem() {
-            try {
-                if (typeof __firebase_config === 'undefined') return;
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else { await signInAnonymously(auth); }
-                };
-                await initAuth();
-
-                onAuthStateChanged(auth, (user) => {
-                    userAuth = user;
-                    if (user) {
-                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
-                        onSnapshot(docRef, (snap) => {
-                            if (snap.exists() && !isSyncing) {
-                                window.masterData = snap.data().records || [];
-                                if (window.currentUserRole) window.renderTables();
-                            }
-                        }, (error) => console.error(error));
-                    }
-                });
-            } catch (err) { console.error(err); }
-        }
-
-        window.addEventListener('load', () => {
-            initializeSystem();
-            if (window.lucide) window.lucide.createIcons();
-        });
-    </script>
-</body>
-</html>
+  );
+}
