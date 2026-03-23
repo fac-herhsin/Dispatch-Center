@@ -75,9 +75,27 @@
         
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .toast-item { animation: slideIn 0.3s ease-out forwards; }
+
+        /* 載入中遮罩 */
+        #loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 </head>
 <body class="h-screen overflow-hidden text-slate-200">
+
+    <!-- 載入中動畫 -->
+    <div id="loading-overlay">
+        <div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-yellow-400 font-bold animate-pulse">正在同步雲端試算表...</p>
+    </div>
 
     <!-- 通知中心 -->
     <div id="toast-container" class="fixed top-6 right-6 z-[300] flex flex-col gap-3 w-72 pointer-events-none"></div>
@@ -128,7 +146,6 @@
         </header>
 
         <main class="flex-1 overflow-y-auto custom-scroll p-6 bg-[#050505] space-y-8">
-            <!-- 當前調度清單 -->
             <section class="flex flex-col min-w-0">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-black text-white flex items-center">
@@ -152,7 +169,6 @@
                 </div>
             </section>
 
-            <!-- 歷史結案清單 -->
             <section class="flex flex-col min-w-0 opacity-80">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-black text-zinc-400 flex items-center">
@@ -225,7 +241,7 @@
 
     <script type="module">
         // --- 設定區塊 ---
-        // 請在此處填入您的 Google Apps Script 部署 URL
+        // 請確保此網址正確，且 GAS 已部署為「所有人」
         const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
         
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -238,6 +254,7 @@
         window.currentUserRole = null;
         let isSyncing = false;
 
+        // 通用的通知函數
         window.showToast = (msg, type = 'info') => {
             const container = document.getElementById('toast-container');
             if (!container) return;
@@ -248,6 +265,25 @@
             container.appendChild(toast);
             if (window.lucide) window.lucide.createIcons();
             setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        };
+
+        // --- 與 Google Apps Script 通訊的核心函數 ---
+        const syncToGoogleSheets = async (payload) => {
+            try {
+                // 使用 no-cors 雖然無法讀取回傳值，但能成功送出資料
+                // 為了獲取正確回傳，這裡用標準 fetch
+                await fetch(gasWebappUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // 處理 GAS 跳轉
+                    cache: 'no-cache',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                return true;
+            } catch (err) {
+                console.error("GAS Sync Error:", err);
+                return false;
+            }
         };
 
         window.login = (role) => {
@@ -284,63 +320,106 @@
                 return;
             }
 
+            const loader = document.getElementById('loading-overlay');
+            loader.style.display = 'flex';
+
+            const newId = 'HC-' + Date.now().toString().slice(-6);
+            const timestamp = new Date().toLocaleString();
+
             const newRecord = {
-                id: 'HC-' + Date.now().toString().slice(-6),
+                id: newId,
                 type,
                 status: '待處理',
                 vendor,
                 note,
                 items: [{ n: name, q: qty, u: unit }],
                 timestamp: Date.now(),
-                completedAt: null
+                completedAt: null,
+                creator: window.currentUserRole
             };
 
+            // 1. 同步到試算表 (GAS)
+            const gasPayload = {
+                action: "CREATE",
+                id: newId,
+                time: timestamp,
+                type: type,
+                vendor: vendor,
+                item: name,
+                qty: qty,
+                unit: unit,
+                note: note,
+                creator: window.currentUserRole
+            };
+            
+            await syncToGoogleSheets(gasPayload);
+
+            // 2. 更新本地與 Firebase
             window.masterData = [newRecord, ...window.masterData];
             window.renderTables();
             window.closeModal();
-            window.showToast(`單據 ${newRecord.id} 已建立，正在同步...`, 'info');
+            window.showToast(`單據 ${newId} 已同步至試算表`, 'success');
+            
             await window.manualSync(true);
             
+            // 清除表單
             document.getElementById('input-vendor').value = '';
             document.getElementById('input-item-name').value = '';
             document.getElementById('input-item-qty').value = '';
             document.getElementById('input-note').value = '';
+            loader.style.display = 'none';
         };
 
         window.deleteRecord = async (id) => {
+            if(!confirm(`確定要刪除單據 ${id} 嗎？這也會同步刪除試算表資料。`)) return;
+            
+            const loader = document.getElementById('loading-overlay');
+            loader.style.display = 'flex';
+
             const index = window.masterData.findIndex(d => d.id === id);
-            if (index === -1) return;
+            if (index === -1) {
+                loader.style.display = 'none';
+                return;
+            }
+
+            // 同步 GAS 刪除
+            await syncToGoogleSheets({ action: "DELETE", id: id });
 
             window.masterData.splice(index, 1);
             window.renderTables();
-            window.showToast(`單據 ${id} 已被永久刪除`, 'danger');
+            window.showToast(`單據 ${id} 已被刪除`, 'danger');
             await window.manualSync(true);
+            loader.style.display = 'none';
         };
 
         window.updateStatus = async (id, newStatus) => {
+            const loader = document.getElementById('loading-overlay');
+            loader.style.display = 'flex';
+
             const index = window.masterData.findIndex(d => d.id === id);
-            if (index === -1) return;
+            if (index === -1) {
+                loader.style.display = 'none';
+                return;
+            }
 
             const record = window.masterData[index];
             let finalStatus = newStatus;
-            let msg = `單據 ${id} 狀態更新為 ${newStatus}`;
 
-            if (newStatus === '已送達') {
-                if (record.type === '加工件') {
-                    finalStatus = '待採購確認';
-                    msg = `加工件 ${id} 已送達工廠，請通知採購部確認載回時機`;
-                } else {
-                    finalStatus = '已結案';
-                    window.masterData[index].completedAt = Date.now();
-                }
-            } else if (newStatus === '已結案') {
+            if (newStatus === '已送達' && record.type === '加工件') {
+                finalStatus = '待採購確認';
+            } else if (newStatus === '已送達' || newStatus === '已結案') {
+                finalStatus = '已結案';
                 window.masterData[index].completedAt = Date.now();
             }
 
+            // 同步 GAS 狀態更新
+            await syncToGoogleSheets({ action: "UPDATE_STATUS", id: id, status: finalStatus });
+
             window.masterData[index].status = finalStatus;
             window.renderTables();
-            window.showToast(msg, 'success');
+            window.showToast(`${id} 狀態已更新為 ${finalStatus}`, 'success');
             await window.manualSync(true);
+            loader.style.display = 'none';
         };
 
         window.manualSync = async (isAuto = false) => {
@@ -373,10 +452,10 @@
                 await setDoc(docRef, { records: finalData, lastUpdate: Date.now() });
                 window.masterData = finalData;
                 window.renderTables();
-                if (!isAuto) window.showToast('同步成功！', 'success');
+                if (!isAuto) window.showToast('雲端快取同步成功！', 'success');
             } catch (e) {
                 console.error(e);
-                window.showToast('同步失敗', 'warning');
+                window.showToast('Firebase 同步失敗', 'warning');
             } finally {
                 isSyncing = false;
                 if (btn && icon) { btn.disabled = false; icon.classList.remove('animate-spin'); }
