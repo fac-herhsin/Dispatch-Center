@@ -612,12 +612,27 @@ window.manualSync = async (isAuto = false) => {
                     userAuth = user;
                     if (user) {
                         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master');
+                        
+                        // 使用即時監聽時，加入更嚴格的資料合併判斷
                         onSnapshot(docRef, (snap) => {
-                            if (snap.exists() && !isSyncing) {
-                                window.masterData = snap.data().records || [];
-                                if (window.currentUserRole) window.renderTables();
+                            // 如果正在「手動同步中」，不讓自動監聽干擾，避免互相覆蓋
+                            if (isSyncing) return;
+
+                            if (snap.exists()) {
+                                const cloudRecords = snap.data().records || [];
+                                
+                                // 只有在本地沒資料，或是雲端資料更新、更多時才強制覆蓋
+                                if (window.masterData.length === 0 || cloudRecords.length >= window.masterData.length) {
+                                    window.masterData = cloudRecords;
+                                    // 確保有登入角色才畫圖表，免得報錯
+                                    if (window.currentUserRole) {
+                                        window.renderTables();
+                                    }
+                                }
                             }
-                        }, (error) => console.error(error));
+                        }, (error) => {
+                            console.error("Firestore 監聽失敗:", error);
+                        });
                     }
                 });
             } catch (err) { console.error(err); }
