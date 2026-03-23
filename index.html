@@ -7,7 +7,10 @@ import {
   Calendar, CheckCircle2, Clock, ChevronRight, AlertCircle 
 } from 'lucide-react';
 
-/** [設定區] 請保持您的 GAS URL **/
+/** * [重要設定] 
+ * 1. GAS_URL: 請確保您的 Google Apps Script 已部署為「所有人(Anyone)」可存取。
+ * 2. Firebase: 若在 GitHub Pages 執行，請確保已在 Firebase Console 開啟匿名登入，並將您的網域加入白名單。
+ **/
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWblekzzNoG2INF-1TrpFx27zLMrMPyE8ycgiROK4tJg/exec";
 
 export default function App() {
@@ -19,33 +22,55 @@ export default function App() {
   const [formData, setFormData] = useState({ type: '加工件', vendor: '', item: '', qty: '', unit: '件', note: '' });
   const [activeTab, setActiveTab] = useState('active');
 
-  // Firebase 初始化
+  // Firebase 初始化安全檢查
   const firebaseConfig = useMemo(() => {
-    return typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+    try {
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        return JSON.parse(__firebase_config);
+      }
+    } catch (e) {
+      console.warn("Firebase config parse error, using fallback or empty config.");
+    }
+    return null;
   }, []);
-  const firebaseApp = useMemo(() => firebaseConfig ? initializeApp(firebaseConfig) : null, [firebaseConfig]);
+
+  const firebaseApp = useMemo(() => {
+    if (!firebaseConfig) return null;
+    try {
+      return initializeApp(firebaseConfig);
+    } catch (e) {
+      console.error("Firebase Initialization Failed:", e);
+      return null;
+    }
+  }, [firebaseConfig]);
+
   const db = useMemo(() => firebaseApp ? getFirestore(firebaseApp) : null, [firebaseApp]);
   const auth = useMemo(() => firebaseApp ? getAuth(firebaseApp) : null, [firebaseApp]);
   const appId = typeof __app_id !== 'undefined' ? __app_id : 'hc-dispatch-v3';
 
-  // 1. 身份驗證
+  // 1. 身份驗證與 GitHub 環境適配
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
       try {
+        // 優先嘗試 Custom Token，否則使用匿名登入
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { console.error("Auth Error:", err); }
+      } catch (err) { 
+        console.error("Auth Error (Check if Anonymous Auth is enabled in Firebase):", err); 
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
     return () => unsubscribe();
   }, [auth]);
 
-  // 2. 實時監聽 Firestore (Rule 1: 正確路徑)
+  // 2. 實時監聽 Firestore
   useEffect(() => {
     if (!user || !db) return;
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master_list');
@@ -53,24 +78,46 @@ export default function App() {
       if (docSnap.exists()) {
         setRecords(docSnap.data().items || []);
       }
-    }, (err) => { console.error("Firestore Error:", err); });
+    }, (err) => { 
+      console.error("Firestore Permission/Path Error:", err); 
+    });
     return () => unsubscribe();
   }, [user, db, appId]);
 
-  // 同步至 GAS
+  // 同步至 GAS (跨網域 fetch 處理)
   const syncToGAS = async (payload) => {
     if (!GAS_URL) return true;
     try {
-      await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      await fetch(GAS_URL, { 
+        method: 'POST', 
+        mode: 'no-cors', // 解決 GAS 跨網域問題
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
       return true;
-    } catch (e) { console.error("GAS Sync Failed", e); return false; }
+    } catch (e) { 
+      console.error("GAS Sync Failed:", e); 
+      return false; 
+    }
   };
 
   // 儲存至 Firebase
   const saveToFirebase = async (newList) => {
-    if (!db || !user) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master_list');
-    await setDoc(docRef, { items: newList, lastUpdate: Date.now(), updatedBy: user.uid });
+    if (!db || !user) {
+      console.warn("Firebase not ready. Data saved locally only.");
+      setRecords(newList);
+      return;
+    }
+    try {
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'records', 'master_list');
+      await setDoc(docRef, { 
+        items: newList, 
+        lastUpdate: Date.now(), 
+        updatedBy: user.uid 
+      });
+    } catch (e) {
+      console.error("Failed to save to Firebase:", e);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -120,7 +167,7 @@ export default function App() {
   };
 
   const activeRecords = records.filter(r => r && r.status !== '已結案');
-  const historyRecords = records.filter(r => r && r.status === '已結案').sort((a,b) => b.completedAt - a.completedAt);
+  const historyRecords = records.filter(r => r && r.status === '已結案').sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0));
 
   if (!role) {
     return (
@@ -149,6 +196,11 @@ export default function App() {
               </button>
             ))}
           </div>
+          {!firebaseApp && (
+            <p className="mt-6 text-[10px] text-zinc-600 text-center italic">
+              提示：Firebase 未配置，目前將運行於離線模式。
+            </p>
+          )}
         </div>
       </div>
     );
@@ -156,7 +208,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-300 font-sans pb-20">
-      {/* 頂部導航 */}
       <nav className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="bg-yellow-400 p-2 rounded-xl">
@@ -183,7 +234,6 @@ export default function App() {
       </nav>
 
       <main className="max-w-6xl mx-auto p-6">
-        {/* 數據統計 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-zinc-900/50 p-6 rounded-3xl border border-zinc-800 flex items-center justify-between">
             <div>
@@ -208,7 +258,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 標籤切換 */}
         <div className="flex gap-8 border-b border-zinc-800 mb-6">
           <button 
             onClick={() => setActiveTab('active')}
@@ -220,8 +269,7 @@ export default function App() {
           >歷史結案紀錄</button>
         </div>
 
-        {/* 表格區 */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] overflow-hidden">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -242,25 +290,25 @@ export default function App() {
                     </td>
                     <td className="px-6 py-5">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                        item.status === '待處理' ? 'bg-zinc-800 text-zinc-400' : 
-                        item.status === '配送中' ? 'bg-blue-500/10 text-blue-500' :
-                        item.status === '已結案' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'
+                        item.status === '待處理' ? 'bg-zinc-800 text-zinc-400 border border-zinc-700' : 
+                        item.status === '配送中' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                        item.status === '已結案' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'
                       }`}>
                         {item.status}
                       </span>
                     </td>
                     <td className="px-6 py-5 font-bold text-zinc-200">{item.vendor}</td>
                     <td className="px-6 py-5">
-                      <div className="text-zinc-300 text-sm">{item.item}</div>
-                      <div className="text-xs text-zinc-500 font-medium">{item.qty} {item.unit} {item.note && `(${item.note})`}</div>
+                      <div className="text-zinc-300 text-sm font-medium">{item.item}</div>
+                      <div className="text-xs text-zinc-500">{item.qty} {item.unit} {item.note && `(${item.note})`}</div>
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-2">
                         {role === 'factory' && item.status === '待處理' && (
-                          <button onClick={() => updateStatus(item.id, '配送中')} className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg">開始配送</button>
+                          <button onClick={() => updateStatus(item.id, '配送中')} className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg shadow-blue-600/20">開始配送</button>
                         )}
                         {role === 'factory' && item.status === '配送中' && (
-                          <button onClick={() => updateStatus(item.id, '已送達')} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg">標記送達</button>
+                          <button onClick={() => updateStatus(item.id, '已送達')} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg shadow-emerald-600/20">標記送達</button>
                         )}
                         {role === 'admin' && (
                           <button onClick={() => deleteRecord(item.id)} className="p-2 text-zinc-600 hover:text-red-500 transition-colors">
@@ -287,7 +335,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* 新增彈窗 */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -299,7 +346,7 @@ export default function App() {
                   <select 
                     value={formData.type} 
                     onChange={e => setFormData({...formData, type: e.target.value})}
-                    className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white font-medium"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white font-medium outline-none focus:ring-2 focus:ring-yellow-400/50"
                   >
                     <option value="加工件">加工件</option>
                     <option value="銷售">銷售單</option>
@@ -310,7 +357,7 @@ export default function App() {
                   <input 
                     type="text" required placeholder="工廠或客戶名稱"
                     value={formData.vendor} onChange={e => setFormData({...formData, vendor: e.target.value})}
-                    className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white placeholder:text-zinc-600"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-yellow-400/50"
                   />
                 </div>
               </div>
@@ -319,7 +366,7 @@ export default function App() {
                 <input 
                   type="text" required placeholder="例如：鍍鋅鋼捲 0.5mm"
                   value={formData.item} onChange={e => setFormData({...formData, item: e.target.value})}
-                  className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-yellow-400/50"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -328,7 +375,7 @@ export default function App() {
                   <input 
                     type="number" required
                     value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})}
-                    className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-yellow-400/50"
                   />
                 </div>
                 <div className="space-y-2">
@@ -336,7 +383,7 @@ export default function App() {
                   <input 
                     type="text"
                     value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})}
-                    className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-yellow-400/50"
                   />
                 </div>
               </div>
@@ -345,12 +392,12 @@ export default function App() {
                 <textarea 
                   rows="3" placeholder="其他特殊載運需求..."
                   value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})}
-                  className="w-full bg-zinc-800 border-none rounded-xl p-3 text-white resize-none"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white resize-none outline-none focus:ring-2 focus:ring-yellow-400/50"
                 />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 font-bold text-zinc-500 hover:text-white transition-colors">取消</button>
-                <button type="submit" disabled={loading} className="flex-[2] bg-yellow-400 hover:bg-yellow-300 text-black rounded-2xl py-4 font-black transition-all active:scale-95 disabled:opacity-50">
+                <button type="submit" disabled={loading} className="flex-[2] bg-yellow-400 hover:bg-yellow-300 text-black rounded-2xl py-4 font-black transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-yellow-400/20">
                   {loading ? '處理中...' : '確認發佈調度'}
                 </button>
               </div>
