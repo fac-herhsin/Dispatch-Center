@@ -419,16 +419,29 @@ activeList.forEach(r => {
             `;
             activeBody.appendChild(tr);
         });
-        historyList.forEach(r => {
+historyList.forEach(r => {
             const tr = document.createElement('tr');
-            tr.className = "text-zinc-500 text-sm";
+            tr.className = "text-zinc-500 text-sm hover:bg-white/5 transition-colors";
+
+            // 判斷是否為管理員，若是則顯示刪除按鈕
+            let adminActionHtml = '';
+            if (window.currentUserRole === 'admin') {
+                adminActionHtml = `
+                    <button onclick="window.deleteRecord('${r.id}')" class="p-2 text-zinc-600 hover:text-red-500 transition-colors" title="永久刪除歷史紀錄">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>`;
+            }
+
             tr.innerHTML = `
-                <td class="px-6 py-4">${r.id}</td>
+                <td class="px-6 py-4 font-mono">${r.id}</td>
                 <td class="px-6 py-4">${r.type}</td>
                 <td class="px-6 py-4">${r.vendor}</td>
                 <td class="px-6 py-4 text-xs">${r.time || ''}</td>
                 <td class="px-6 py-4">${r.items && r.items[0] ? r.items[0].q + ' x ' + r.items[0].n : ''}</td>
-                <td class="px-6 py-4"><span class="text-emerald-500 font-bold">已結案</span></td>
+                <td class="px-6 py-4 flex items-center justify-between">
+                    <span class="text-emerald-500 font-bold">已結案</span>
+                    ${adminActionHtml}
+                </td>
             `;
             historyBody.appendChild(tr);
         });
