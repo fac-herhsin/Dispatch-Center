@@ -363,28 +363,45 @@ activeList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-white/5 transition-colors text-white";
 
-            // 1. 先計算要顯示什麼按鈕 (寫在 HTML 之外)
+// 1. 定義操作按鈕與刪除按鈕
             let actionHtml = '';
+            let deleteBtnHtml = '';
 
-if (window.currentUserRole === 'factory') {
+            // 廠務調度邏輯
+            if (window.currentUserRole === 'factory') {
                 if (r.status === '待處理') {
-                    // 第一階段：確認配送
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-black transition-all">確認配送</button>`;
                 } else if (r.status === '配送中') {
-                    // 第二階段：完成配送 (點擊後狀態改為「待結案」，讓倉管接手)
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-black transition-all">完成配送</button>`;
+                    // 根據類型判斷下一階段：加工件 -> 加工中；銷售 -> 待結案
+                    const nextStatus = (r.type === '加工件') ? '加工中' : '待結案';
+                    const btnText = (r.type === '加工件') ? '送交加工' : '完成配送';
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '${nextStatus}')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-black transition-all">${btnText}</button>`;
+                } else if (r.status === '已完成加工' && r.type === '加工件') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-black transition-all">載回件回廠</button>`;
                 } else {
-                    // 其他狀態 (如待結案)
-                    actionHtml = `<span class="text-zinc-500 text-[10px]">等待收貨確認</span>`;
+                    actionHtml = `<span class="text-zinc-500 text-[10px]">等待階段更新</span>`;
                 }
-            } else if (window.currentUserRole === 'admin' || window.currentUserRole === 'warehouse') {
-                // 倉管部或管理員：只要不是待處理，就可以結案
-                actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button>`;
-            } else {
-                actionHtml = `<span class="text-zinc-600 text-[10px]">等待處理</span>`;
+            } 
+            // 採購/業務邏輯 (處理加工件確認)
+            else if (window.currentUserRole === 'procure' || window.currentUserRole === 'admin') {
+                if (r.status === '加工中' && r.type === '加工件') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '已完成加工')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-black transition-all">確認加工完成</button>`;
+                } else if (window.currentUserRole === 'procure') {
+                    actionHtml = `<span class="text-zinc-600 text-[10px]">等待處理</span>`;
+                }
+            }
+            
+            // 倉管邏輯 (結案)
+            if ((window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') && r.status === '待結案') {
+                actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all text-emerald-400">結案入庫</button>`;
             }
 
-            // 2. 最後才把 actionHtml 塞進 tr.innerHTML 裡面
+            // 系統管理員專屬：刪除按鈕
+            if (window.currentUserRole === 'admin') {
+                deleteBtnHtml = `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500 transition-colors" title="刪除單據"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            }
+
+            // 2. 渲染至表格
             tr.innerHTML = `
                 <td class="px-6 py-5">
                     <div class="font-black text-yellow-400">${r.id}</div>
@@ -398,7 +415,7 @@ if (window.currentUserRole === 'factory') {
                     <div>${r.items[0].q} x ${r.items[0].n}</div>
                     <div class="text-[10px] text-zinc-500">${r.note || ''}</div>
                 </td>
-                <td class="px-6 py-5">${actionHtml}</td> 
+                <td class="px-6 py-5 flex items-center">${actionHtml}${deleteBtnHtml}</td> 
             `;
             activeBody.appendChild(tr);
         });
@@ -445,7 +462,34 @@ window.updateStatus = async (id, newStatus) => {
     } finally {
         if (loader) loader.style.display = 'none';
     }
-};    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
+};// 新增：系統管理員刪除單據功能
+    window.deleteRecord = async (id) => {
+        if (!confirm(`確定要刪除單據 ${id} 嗎？此操作將從雲端完全移除。`)) return;
+
+        const loader = document.getElementById('loading-overlay');
+        if (loader) loader.style.display = 'flex';
+
+        try {
+            const response = await fetch(gasWebappUrl, {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    action: "DELETE", 
+                    id: id 
+                })
+            });
+
+            if (response.ok) {
+                window.showToast(`單據 ${id} 已成功刪除`, 'danger');
+                await window.manualSync(); 
+            } else {
+                throw new Error();
+            }
+        } catch (e) {
+            window.showToast('刪除失敗，請確認管理員權限', 'danger');
+        } finally {
+            if (loader) loader.style.display = 'none';
+        }
+    };window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 </body>
 </html>
