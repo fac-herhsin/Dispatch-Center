@@ -147,22 +147,28 @@
 
         <main class="flex-1 overflow-y-auto custom-scroll p-6 bg-[#050505] space-y-8">
             <section class="flex flex-col min-w-0">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-black text-white flex items-center">
-                        <span class="w-1.5 h-6 bg-yellow-400 rounded-full mr-3"></span>
-                        當前調度清單 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
-                    </h3>
-                </div>
+<div class="flex items-center justify-between mb-4">
+    <h3 class="text-lg font-black text-white flex items-center">
+        <span class="w-1.5 h-6 bg-yellow-400 rounded-full mr-3"></span>
+        當前調度清單 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
+    </h3>
+    <button onclick="window.printDispatch()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-black transition-all flex items-center gap-2 text-white">
+        <i data-lucide="printer" class="w-4 h-4"></i> 批量列印配送單
+    </button>
+</div>
                 <div class="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden flex flex-col">
                     <table class="w-full text-left border-separate border-spacing-0">
                         <thead class="bg-zinc-900 border-b border-zinc-800">
-                            <tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                                <th class="px-6 py-4">單號/類型</th>
-                                <th class="px-6 py-4">狀態</th>
-                                <th class="px-6 py-4">目的地</th>
-                                <th class="px-6 py-4">內容與備註</th>
-                                <th class="px-6 py-4">操作</th>
-                            </tr>
+<tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+<th class="px-6 py-4 w-10">
+    <input type="checkbox" id="select-all-checkbox" class="w-5 h-5 cursor-pointer accent-yellow-400" onclick="window.toggleAll(this)">
+</th> 
+<th class="px-6 py-4">單號/類型</th>
+    <th class="px-6 py-4">狀態</th>
+    <th class="px-6 py-4">目的地</th>
+    <th class="px-6 py-4">內容與備註</th>
+    <th class="px-6 py-4">操作</th>
+</tr>
                         </thead>
                         <tbody id="active-body" class="divide-y divide-zinc-800/50"></tbody>
                     </table>
@@ -401,8 +407,11 @@ activeList.forEach(r => {
                 deleteBtnHtml = `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500 transition-colors" title="刪除單據"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
             }
 
-            // 2. 渲染至表格
+// 2. 渲染至表格 (請替換這部分)
             tr.innerHTML = `
+                <td class="px-6 py-5">
+                    <input type="checkbox" class="print-checkbox w-5 h-5 rounded border-zinc-700 bg-zinc-800 accent-yellow-400 cursor-pointer" data-id="${r.id}">
+                </td>
                 <td class="px-6 py-5">
                     <div class="font-black text-yellow-400">${r.id}</div>
                     <div class="text-[10px] text-zinc-500">${r.type}</div>
@@ -501,8 +510,82 @@ window.updateStatus = async (id, newStatus) => {
             window.showToast('刪除失敗，請確認管理員權限', 'danger');
         } finally {
             if (loader) loader.style.display = 'none';
+        }} finally {
+            if (loader) loader.style.display = 'none';
         }
-    };window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
+    };
+
+    // 在這裡貼上：批量列印處理函數
+    window.printDispatch = () => {
+        // 1. 抓取所有被勾選的單據 ID
+        const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
+        
+        if (selectedIds.length === 0) {
+            alert('請先勾選要列印的單據');
+            return;
+        }
+
+        // 2. 從目前的資料中過濾出選中的項目
+        const printData = window.allData.filter(r => selectedIds.includes(r.id));
+        
+        // 3. 建立列印內容 (白底黑字風格)
+        let printHtml = `
+            <div style="padding: 30px; font-family: sans-serif; color: black; background: white;">
+                <h1 style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px;">司機配送/載貨任務單</h1>
+                <p style="text-align: right; font-size: 12px;">列印時間：${new Date().toLocaleString()}</p>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <thead>
+                        <tr style="background: #f2f2f2;">
+                            <th style="border: 1px solid black; padding: 8px;">單號/類型</th>
+                            <th style="border: 1px solid black; padding: 8px;">目的地/廠商</th>
+                            <th style="border: 1px solid black; padding: 8px;">內容數量</th>
+                            <th style="border: 1px solid black; padding: 8px;">備註</th>
+                            <th style="border: 1px solid black; padding: 8px; width: 80px;">簽收</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        printData.forEach(item => {
+            printHtml += `
+                <tr style="height: 50px;">
+                    <td style="border: 1px solid black; padding: 8px; text-align: center;">${item.id}<br><small>${item.type}</small></td>
+                    <td style="border: 1px solid black; padding: 8px; font-weight: bold; font-size: 16px;">${item.vendor}</td>
+                    <td style="border: 1px solid black; padding: 8px;">${item.items[0].q} x ${item.items[0].n}</td>
+                    <td style="border: 1px solid black; padding: 8px;">${item.note || ''}</td>
+                    <td style="border: 1px solid black; padding: 8px;"></td>
+                </tr>
+            `;
+        });
+
+        printHtml += `
+                    </tbody>
+                </table>
+                <p style="margin-top: 15px;"><strong>總計停靠點：${printData.length} 處</strong></p>
+            </div>
+        `;
+
+        // 4. 開啟新視窗列印
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write('<html><head><title>任務單列印</title></head><body>' + printHtml + '</body></html>');
+        printWindow.document.close();
+        
+      setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+     }, 500);
+    }; // 這是 printDispatch 的結尾 (第 577 行)
+
+    // 在這裡插入「一鍵全選」邏輯
+    window.toggleAll = (source) => {
+        const checkboxes = document.querySelectorAll('.print-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = source.checked;
+        });
+    };
+
+    // 確保這行保留在最後面 (第 580 行)
+    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 </body>
 </html>
