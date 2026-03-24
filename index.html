@@ -366,16 +366,21 @@ activeList.forEach(r => {
             // 1. 先計算要顯示什麼按鈕 (寫在 HTML 之外)
             let actionHtml = '';
 
-            if (window.currentUserRole === 'factory') {
-                // 廠務部看到的按鈕：若還是「待處理」則顯示確認配送
-                actionHtml = r.status === '待處理' 
-                    ? `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-black transition-all">確認配送</button>`
-                    : `<span class="text-blue-400 text-[10px]">已在配送中</span>`;
+if (window.currentUserRole === 'factory') {
+                if (r.status === '待處理') {
+                    // 第一階段：確認配送
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-black transition-all">確認配送</button>`;
+                } else if (r.status === '配送中') {
+                    // 第二階段：完成配送 (點擊後狀態改為「待結案」，讓倉管接手)
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-black transition-all">完成配送</button>`;
+                } else {
+                    // 其他狀態 (如待結案)
+                    actionHtml = `<span class="text-zinc-500 text-[10px]">等待收貨確認</span>`;
+                }
             } else if (window.currentUserRole === 'admin' || window.currentUserRole === 'warehouse') {
-                // 管理員或倉管看到的按鈕：結案
+                // 倉管部或管理員：只要不是待處理，就可以結案
                 actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-zinc-800 hover:bg-emerald-600 rounded-lg text-xs font-bold transition-all">結案</button>`;
             } else {
-                // 採購/業務部只能看
                 actionHtml = `<span class="text-zinc-600 text-[10px]">等待處理</span>`;
             }
 
@@ -396,6 +401,19 @@ activeList.forEach(r => {
                 <td class="px-6 py-5">${actionHtml}</td> 
             `;
             activeBody.appendChild(tr);
+        });
+        historyList.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.className = "text-zinc-500 text-sm";
+            tr.innerHTML = `
+                <td class="px-6 py-4">${r.id}</td>
+                <td class="px-6 py-4">${r.type}</td>
+                <td class="px-6 py-4">${r.vendor}</td>
+                <td class="px-6 py-4 text-xs">${r.time || ''}</td>
+                <td class="px-6 py-4">${r.items && r.items[0] ? r.items[0].q + ' x ' + r.items[0].n : ''}</td>
+                <td class="px-6 py-4"><span class="text-emerald-500 font-bold">已結案</span></td>
+            `;
+            historyBody.appendChild(tr);
         });
         if (window.lucide) lucide.createIcons();
    }; 
