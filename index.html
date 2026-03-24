@@ -506,16 +506,14 @@ window.updateStatus = async (id, newStatus) => {
             } else {
                 throw new Error();
             }
-        } catch (e) {
+} catch (e) {
             window.showToast('刪除失敗，請確認管理員權限', 'danger');
         } finally {
-            if (loader) loader.style.display = 'none';
-        }} finally {
             if (loader) loader.style.display = 'none';
         }
     };
 
-    // 在這裡貼上：批量列印處理函數
+    // 接下來就是接 window.printDispatch...
     window.printDispatch = () => {
         // 1. 抓取所有被勾選的單據 ID
         const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
@@ -526,7 +524,7 @@ window.updateStatus = async (id, newStatus) => {
         }
 
         // 2. 從目前的資料中過濾出選中的項目
-        const printData = window.allData.filter(r => selectedIds.includes(r.id));
+const printData = window.masterData.filter(r => selectedIds.includes(r.id));
         
         // 3. 建立列印內容 (白底黑字風格)
         let printHtml = `
