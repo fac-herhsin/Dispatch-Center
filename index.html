@@ -253,50 +253,50 @@
     window.masterData = [];
     window.currentUserRole = null;
 
-    // 2. 登入邏輯
-    window.login = async (role) => {
-        const loader = document.getElementById('loading-overlay');
-        loader.style.display = 'flex';
-        try {
-            window.currentUserRole = role;
-            await window.manualSync(); 
-
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            
-            const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
-            document.getElementById('user-role-badge').innerText = roles[role] || role;
-            
-            const actionBtn = document.getElementById('main-action-btn');
-            if (actionBtn) actionBtn.classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
-
-            window.showToast(`歡迎回來，${roles[role]}`, 'success');
-        } catch (err) {
-            console.error(err);
-            window.showToast('連線失敗，請檢查網路', 'danger');
-        } finally {
-            loader.style.display = 'none';
-        }
-    };
-
-    // 3. 資料同步 (GET)
+    // 2. 資料同步函式 (修正版)
     window.manualSync = async () => {
         const loader = document.getElementById('loading-overlay');
         if (loader) loader.style.display = 'flex';
+        
         try {
-            const resp = await fetch(gasWebappUrl);
-            const data = await resp.json();
+            // 加入時間戳記避免快取，確保抓到最新資料
+            const response = await fetch(`${gasWebappUrl}?t=${Date.now()}`);
+            const data = await response.json();
+            
             window.masterData = data || [];
-            window.renderTables();
-            window.showToast('已更新雲端資料', 'success');
+            
+            // 執行渲染表格
+            if (typeof window.renderTables === 'function') {
+                window.renderTables();
+            }
+            
+            window.showToast('雲端資料同步成功', 'success');
         } catch (e) {
-            window.showToast('同步失敗', 'danger');
+            console.error('同步出錯:', e);
+            window.showToast('同步失敗，請檢查網路或 GAS 權限', 'danger');
         } finally {
             if (loader) loader.style.display = 'none';
         }
     };
 
-// 4. 新增資料 (POST - CREATE)
+    // 3. 登入邏輯
+    window.login = async (role) => {
+        window.currentUserRole = role;
+        await window.manualSync(); 
+
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('main-app').classList.remove('hidden');
+        
+        const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
+        document.getElementById('user-role-badge').innerText = roles[role] || role;
+        
+        const actionBtn = document.getElementById('main-action-btn');
+        if (actionBtn) actionBtn.classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
+
+        window.showToast(`歡迎回來，${roles[role]}`, 'success');
+    };
+
+    // 4. 新增資料 (POST - CREATE)
     window.saveData = async () => {
         const loader = document.getElementById('loading-overlay');
         loader.style.display = 'flex';
@@ -325,7 +325,6 @@
         };
 
         try {
-            // 修正點：加入 mode: 'no-cors' 解決跨網域問題
             await fetch(gasWebappUrl, {
                 method: 'POST',
                 mode: 'no-cors', 
@@ -333,42 +332,51 @@
                 body: JSON.stringify({ action: "CREATE", ...newRecord })
             });
 
-            // 修正點：no-cors 模式下無法直接等待回傳，改用延遲同步
             setTimeout(async () => {
                 await window.manualSync();
                 window.closeModal();
                 window.showToast('單據已發佈', 'success');
+                // 清空輸入欄位
                 document.getElementById('input-vendor').value = '';
                 document.getElementById('input-note').value = '';
+                document.getElementById('item-list').innerHTML = `
+                    <label class="text-[10px] font-black text-zinc-500 block">品項明細</label>
+                    <div class="item-entry grid grid-cols-12 gap-2">
+                        <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
+                        <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
+                        <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
+                    </div>`;
             }, 1000);
 
         } catch (e) {
             console.error(e);
             window.showToast('發佈失敗', 'danger');
         } finally {
-            // 注意：這裡如果 loader 太快消失，使用者會以為沒在動，可以視情況調整
-            setTimeout(() => { loader.style.display = 'none'; }, 1000);
+            setTimeout(() => { if (loader) loader.style.display = 'none'; }, 1000);
         }
     };
-    // 5. 更新狀態 (POST - UPDATE_STATUS)
+
+    // 5. 更新狀態
     window.updateStatus = async (id, newStatus) => {
         const loader = document.getElementById('loading-overlay');
         if (loader) loader.style.display = 'flex';
         try {
             await fetch(gasWebappUrl, {
                 method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: "UPDATE_STATUS", id: id, status: newStatus })
             });
-            window.showToast(`狀態已更新: ${newStatus}`, 'success');
-            await window.manualSync();
+            window.showToast(`狀態更新中...`, 'info');
+            setTimeout(async () => {
+                await window.manualSync();
+            }, 1000);
         } catch (e) {
             window.showToast('更新失敗', 'danger');
-        } finally {
-            if (loader) loader.style.display = 'none';
         }
     };
 
-    // 6. 刪除資料 (POST - DELETE)
+    // 6. 刪除資料
     window.deleteRecord = async (id) => {
         if (!confirm(`確定要刪除單據 ${id} 嗎？`)) return;
         const loader = document.getElementById('loading-overlay');
@@ -376,21 +384,25 @@
         try {
             await fetch(gasWebappUrl, {
                 method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: "DELETE", id: id })
             });
-            window.showToast('已刪除單據', 'info');
-            await window.manualSync();
+            window.showToast('刪除請求已送出', 'info');
+            setTimeout(async () => {
+                await window.manualSync();
+            }, 1000);
         } catch (e) {
             window.showToast('刪除失敗', 'danger');
-        } finally {
-            if (loader) loader.style.display = 'none';
         }
     };
 
-    // 7. 介面渲染與輔助功能
+    // 7. 介面渲染
     window.renderTables = () => {
         const activeBody = document.getElementById('active-body');
         const historyBody = document.getElementById('history-body');
+        if (!activeBody || !historyBody) return;
+
         activeBody.innerHTML = '';
         historyBody.innerHTML = '';
 
@@ -405,12 +417,13 @@
             let actionHtml = '';
             let deleteBtnHtml = (window.currentUserRole === 'admin') ? `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '';
 
-            // 簡易權限邏輯 (廠務)
             if (window.currentUserRole === 'factory') {
                 if (r.status === '待處理') actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-black">確認配送</button>`;
                 else if (r.status === '配送中') {
                     const next = (r.type === '加工件') ? '加工中' : '待結案';
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '${next}')" class="px-4 py-2 bg-indigo-600 rounded-lg text-xs font-black">抵達目的地</button>`;
+                } else if (r.status === '加工中') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
                 }
             } else if (window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') {
                 if (r.status === '待結案') actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-black">結案入庫</button>`;
@@ -421,7 +434,7 @@
                 <td class="px-6 py-5"><div class="font-black text-yellow-400">${r.id}</div><div class="text-[10px] text-zinc-500">${r.type}</div></td>
                 <td class="px-6 py-5"><span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px]">${r.status}</span></td>
                 <td class="px-6 py-5 font-bold text-lg">${r.vendor}</td>
-                <td class="px-6 py-5"><div class="space-y-1">${r.items.map(i => `<div class="text-sm">${i.q}${i.u} x ${i.n}</div>`).join('')}</div></td>
+                <td class="px-6 py-5"><div class="space-y-1">${r.items.map(i => `<div class="text-sm">${i.q}${i.u} x ${i.n}</div>`).join('')}</div><div class="text-xs text-zinc-500 mt-1">${r.note || ''}</div></td>
                 <td class="px-6 py-5 flex items-center">${actionHtml}${deleteBtnHtml}</td>`;
             activeBody.appendChild(tr);
         });
@@ -429,31 +442,13 @@
         historyList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "text-zinc-500 text-sm";
-            tr.innerHTML = `<td class="px-6 py-4">${r.id}</td><td class="px-6 py-4">${r.type}</td><td class="px-6 py-4">${r.vendor}</td><td class="px-6 py-4">${r.timestamp || ''}</td><td class="px-6 py-4">${r.items[0]?.n || ''}</td><td class="px-6 py-4 text-emerald-500 font-bold">已結案</td>`;
+            tr.innerHTML = `<td class="px-6 py-4">${r.id}</td><td class="px-6 py-4">${r.type}</td><td class="px-6 py-4">${r.vendor}</td><td class="px-6 py-4">${r.timestamp || ''}</td><td class="px-6 py-4">${r.items[0]?.n || ''}...</td><td class="px-6 py-4 text-emerald-500 font-bold">已結案</td>`;
             historyBody.appendChild(tr);
         });
         if (window.lucide) lucide.createIcons();
     };
 
-    // 列印功能
-    window.printDispatch = () => {
-        const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
-        if (selectedIds.length === 0) return alert('請先勾選單據');
-        const printData = window.masterData.filter(r => selectedIds.includes(r.id));
-        
-        let content = `<div style="padding:20px; font-family:sans-serif;"><h2>配送任務單</h2><table border="1" style="width:100%; border-collapse:collapse;">
-            <tr><th>單號</th><th>目的地</th><th>品項</th><th>備註</th><th>簽收</th></tr>`;
-        printData.forEach(item => {
-            content += `<tr><td>${item.id}</td><td>${item.vendor}</td><td>${item.items.map(i=>`${i.q}${i.u} ${i.n}`).join('<br>')}</td><td>${item.note||''}</td><td width="80"></td></tr>`;
-        });
-        content += `</table></div>`;
-        
-        const win = window.open('', '_blank');
-        win.document.write(content);
-        win.document.close();
-        setTimeout(() => { win.print(); win.close(); }, 500);
-    };
-
+    // 其他輔助功能
     window.addItemRow = () => {
         const container = document.getElementById('item-list');
         const div = document.createElement('div');
@@ -464,18 +459,39 @@
         container.appendChild(div);
     };
 
+    window.printDispatch = () => {
+        const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
+        if (selectedIds.length === 0) return alert('請先勾選單據');
+        const printData = window.masterData.filter(r => selectedIds.includes(r.id));
+        let content = `<div style="padding:20px; font-family:sans-serif;"><h2>配送任務單</h2><table border="1" style="width:100%; border-collapse:collapse; text-align:left;">
+            <tr><th style="padding:8px">單號</th><th style="padding:8px">目的地</th><th style="padding:8px">品項明細</th><th style="padding:8px">備註</th><th style="padding:8px">簽收</th></tr>`;
+        printData.forEach(item => {
+            content += `<tr><td style="padding:8px">${item.id}</td><td style="padding:8px">${item.vendor}</td><td style="padding:8px">${item.items.map(i=>`${i.q}${i.u} ${i.n}`).join('<br>')}</td><td style="padding:8px">${item.note||''}</td><td width="100"></td></tr>`;
+        });
+        content += `</table></div>`;
+        const win = window.open('', '_blank');
+        win.document.write(content);
+        win.document.close();
+        setTimeout(() => { win.print(); win.close(); }, 500);
+    };
+
     window.openModal = () => document.getElementById('modal').classList.remove('hidden');
     window.closeModal = () => document.getElementById('modal').classList.add('hidden');
     window.showToast = (msg, type) => {
         const container = document.getElementById('toast-container');
+        if (!container) return;
         const toast = document.createElement('div');
-        toast.className = `bg-zinc-800 text-white px-6 py-4 rounded-2xl shadow-xl font-bold mb-2 toast-item`;
+        const colors = { 'success': 'bg-emerald-600', 'danger': 'bg-red-600', 'info': 'bg-blue-600' };
+        toast.className = `${colors[type] || 'bg-zinc-800'} text-white px-6 py-4 rounded-2xl shadow-xl font-bold mb-2 toast-item`;
         toast.innerText = msg;
         container.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     };
     window.toggleAll = (source) => {
         document.querySelectorAll('.print-checkbox').forEach(cb => cb.checked = source.checked);
+    };
+    window.logout = () => {
+        location.reload();
     };
 
     window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
