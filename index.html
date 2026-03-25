@@ -202,48 +202,50 @@
     </div>
 
     <!-- 彈窗: 新增單據 -->
-    <div id="modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm hidden flex items-center justify-center z-[100] p-4">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
-            <h3 class="text-2xl font-black text-white mb-6">新增調度單</h3>
-            <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">單據類型</label>
-                        <select id="input-type" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                            <option value="加工件">加工件</option>
-                            <option value="銷售">銷售</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
-                        <input type="text" id="input-vendor" placeholder="工廠或客戶名稱" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
+<div id="modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm hidden flex items-center justify-center z-[100] p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl flex flex-col max-h-[90vh]">
+        <h3 class="text-2xl font-black text-white mb-6">新增調度單</h3>
+        
+        <div class="space-y-4 overflow-y-auto custom-scroll pr-2 flex-1">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">單據類型</label>
+                    <select id="input-type" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
+                        <option value="加工件">加工件</option>
+                        <option value="銷售">銷售</option>
+                    </select>
                 </div>
                 <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">品項名稱</label>
-                    <input type="text" id="input-item-name" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">數量</label>
-                        <input type="number" id="input-item-qty" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-black text-zinc-500 mb-1 block">單位</label>
-                        <input type="text" id="input-item-unit" value="件" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">備註</label>
-                    <textarea id="input-note" rows="2" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none resize-none" placeholder="輸入額外說明..."></textarea>
+                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
+                    <input type="text" id="input-vendor" placeholder="工廠或客戶名稱" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
                 </div>
             </div>
-            <div class="mt-8 flex gap-3">
-                <button onclick="window.closeModal()" class="flex-1 py-4 text-zinc-500 font-bold">取消</button>
-                <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈單據</button>
+
+            <div id="item-list" class="space-y-3">
+                <label class="text-[10px] font-black text-zinc-500 block">品項明細</label>
+                <div class="item-entry grid grid-cols-12 gap-2">
+                    <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
+                    <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
+                    <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
+                </div>
+            </div>
+            
+            <button onclick="window.addItemRow()" class="w-full py-2 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold hover:bg-zinc-800 transition-all">
+                + 新增更多品項
+            </button>
+
+            <div>
+                <label class="text-[10px] font-black text-zinc-500 mb-1 block">備註</label>
+                <textarea id="input-note" rows="2" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none resize-none" placeholder="輸入額外說明..."></textarea>
             </div>
         </div>
+
+        <div class="mt-8 flex gap-3">
+            <button onclick="window.closeModal()" class="flex-1 py-4 text-zinc-500 font-bold">取消</button>
+            <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈單據</button>
+        </div>
     </div>
+</div>
 
    <script>
     // 1. 你的 GAS 網址（保持不變）
@@ -280,48 +282,81 @@
     };
 
     // 3. 核心功能：直接存檔到 Google Sheets
-    window.saveData = async () => {
-        const loader = document.getElementById('loading-overlay');
-        loader.style.display = 'flex';
+// 新增一行品項輸入框
+window.addItemRow = () => {
+    const container = document.getElementById('item-list');
+    const div = document.createElement('div');
+    div.className = "item-entry grid grid-cols-12 gap-2 mt-2";
+    div.innerHTML = `
+        <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
+        <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
+        <div class="col-span-3 flex gap-1">
+            <input type="text" value="件" class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
+            <button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600 hover:text-red-500 px-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+    `;
+    container.appendChild(div);
+    if (window.lucide) lucide.createIcons();
+};
 
-        const newRecord = {
-            id: 'HC-' + Date.now().toString().slice(-6),
-            type: document.getElementById('input-type').value,
-            status: '待處理',
-            vendor: document.getElementById('input-vendor').value,
-            items: [{ 
-                n: document.getElementById('input-item-name').value, 
-                q: document.getElementById('input-item-qty').value || 0, 
-                u: document.getElementById('input-item-unit').value 
-            }],
-            note: document.getElementById('input-note').value,
-            timestamp: Date.now(),
-            creator: window.currentUserRole
-        };
+// 修改後的保存邏輯
+window.saveData = async () => {
+    const loader = document.getElementById('loading-overlay');
+    loader.style.display = 'flex';
 
-        try {
-            // 直接發送 POST 請求給 GAS
-            const response = await fetch(gasWebappUrl, {
-                method: 'POST',
-                body: JSON.stringify({ action: "CREATE", ...newRecord })
-            });
+    // 抓取所有動態品項
+    const itemEntries = document.querySelectorAll('.item-entry');
+    const items = Array.from(itemEntries).map(row => ({
+        n: row.querySelector('.item-n').value,
+        q: row.querySelector('.item-q').value || 0,
+        u: row.querySelector('.item-u').value
+    })).filter(i => i.n !== ''); // 過濾掉名稱為空的項目
 
-            // 存檔成功後，本地資料也同步更新並重新渲染畫面
-            window.masterData = [newRecord, ...window.masterData];
-            window.renderTables();
-            window.closeModal();
-            window.showToast('單據已同步至 Google Sheets', 'success');
+    if (items.length === 0) {
+        alert("請至少填寫一個品項名稱");
+        loader.style.display = 'none';
+        return;
+    }
 
-            // 清空輸入框
-            document.getElementById('input-vendor').value = '';
-            document.getElementById('input-item-name').value = '';
-        } catch (e) {
-            window.showToast('同步失敗，請稍後再試', 'danger');
-        } finally {
-            loader.style.display = 'none';
-        }
+    const newRecord = {
+        id: 'HC-' + Date.now().toString().slice(-6),
+        type: document.getElementById('input-type').value,
+        status: '待處理',
+        vendor: document.getElementById('input-vendor').value,
+        items: items, // 現在這裡是一個包含多個物件的陣列
+        note: document.getElementById('input-note').value,
+        timestamp: Date.now(),
+        creator: window.currentUserRole
     };
 
+    try {
+        const response = await fetch(gasWebappUrl, {
+            method: 'POST',
+            body: JSON.stringify({ action: "CREATE", ...newRecord })
+        });
+
+        window.masterData = [newRecord, ...window.masterData];
+        window.renderTables();
+        window.closeModal();
+        window.showToast('單據已同步', 'success');
+
+        // 重設彈窗為原始狀態
+        document.getElementById('input-vendor').value = '';
+        document.getElementById('input-note').value = '';
+        document.getElementById('item-list').innerHTML = `
+            <label class="text-[10px] font-black text-zinc-500 block">品項明細</label>
+            <div class="item-entry grid grid-cols-12 gap-2">
+                <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
+                <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
+                <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
+            </div>
+        `;
+    } catch (e) {
+        window.showToast('同步失敗', 'danger');
+    } finally {
+        loader.style.display = 'none';
+    }
+};
     // 4. 手動同步（從 Sheets 讀取最新資料）
     window.manualSync = async () => {
         const loader = document.getElementById('loading-overlay');
@@ -420,10 +455,12 @@ activeList.forEach(r => {
                     <span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px] font-bold">${r.status}</span>
                 </td>
                 <td class="px-6 py-5 font-bold text-lg">${r.vendor}</td>
-                <td class="px-6 py-5">
-                    <div>${r.items[0].q} x ${r.items[0].n}</div>
-                    <div class="text-[10px] text-zinc-500">${r.note || ''}</div>
-                </td>
+<td class="px-6 py-5">
+    <div class="space-y-1">
+        ${r.items.map(i => `<div class="text-sm">${i.q} ${i.u} x ${i.n}</div>`).join('')}
+    </div>
+    <div class="text-[10px] text-zinc-500 mt-1">${r.note || ''}</div>
+</td>
                 <td class="px-6 py-5 flex items-center">${actionHtml}${deleteBtnHtml}</td> 
             `;
             activeBody.appendChild(tr);
@@ -514,7 +551,10 @@ window.updateStatus = async (id, newStatus) => {
     };
 
     // 接下來就是接 window.printDispatch...
-    window.printDispatch = () => {
+    // 尋找 printData.forEach 內對應的欄位
+<td style="border: 1px solid black; padding: 8px;">
+    ${item.items.map(i => `${i.q} ${i.u} x ${i.n}`).join('<br>')}
+</td>
         // 1. 抓取所有被勾選的單據 ID
         const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
         
