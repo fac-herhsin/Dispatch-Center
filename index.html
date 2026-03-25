@@ -247,29 +247,22 @@
     </div>
 </div>
 
-  <script>
+<script>
     // 1. 設定與全域變數
     const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
     window.masterData = [];
     window.currentUserRole = null;
 
-    // 2. 資料同步函式 (修正版)
+    // 2. 資料同步函式
     window.manualSync = async () => {
         const loader = document.getElementById('loading-overlay');
         if (loader) loader.style.display = 'flex';
         
         try {
-            // 加入時間戳記避免快取，確保抓到最新資料
             const response = await fetch(`${gasWebappUrl}?t=${Date.now()}`);
             const data = await response.json();
-            
             window.masterData = data || [];
-            
-            // 執行渲染表格
-            if (typeof window.renderTables === 'function') {
-                window.renderTables();
-            }
-            
+            window.renderTables(); // 呼叫渲染
             window.showToast('雲端資料同步成功', 'success');
         } catch (e) {
             console.error('同步出錯:', e);
@@ -397,8 +390,8 @@
         }
     };
 
-    // 7. 介面渲染
-window.renderTables = () => {
+    // 7. 介面渲染 (修正版：整理了權限並修復歷史紀錄顯示)
+    window.renderTables = () => {
         const activeBody = document.getElementById('active-body');
         const historyBody = document.getElementById('history-body');
         if (!activeBody || !historyBody) return;
@@ -412,17 +405,15 @@ window.renderTables = () => {
         const activeCountEl = document.getElementById('active-count');
         if (activeCountEl) activeCountEl.innerText = activeList.length;
 
+        // A. 渲染當前調度
         activeList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-white/5 transition-colors text-white";
             
             let actionHtml = '';
-            // 只有管理員有刪除權限
             let deleteBtnHtml = (window.currentUserRole === 'admin') ? `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '';
 
-            // --- 權限邏輯開始 ---
-            
-            // 1. 廠務調度 (factory) 的權限：負責配送相關
+            // --- 核心權限邏輯 ---
             if (window.currentUserRole === 'factory') {
                 if (r.status === '待處理') {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-black">確認配送</button>`;
@@ -431,27 +422,18 @@ window.renderTables = () => {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '${next}')" class="px-4 py-2 bg-indigo-600 rounded-lg text-xs font-black">抵達目的地</button>`;
                 }
             } 
-            
-            // 2. 採購/業務 (procure) 的權限：負責確認加工完成
             else if (window.currentUserRole === 'procure') {
                 if (r.status === '加工中') {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
                 }
             }
-
-            // 3. 倉管 (warehouse) 或 管理員 (admin) 的權限：負責最後結案
             else if (window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') {
-                // 管理員擁有採購的「加工完成」權限
                 if (r.status === '加工中') {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
-                } 
-                // 結案權限
-                else if (r.status === '待結案') {
+                } else if (r.status === '待結案') {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-black">結案入庫</button>`;
                 }
             }
-
-            // --- 權限邏輯結束 ---
 
             tr.innerHTML = `
                 <td class="px-6 py-5"><input type="checkbox" class="print-checkbox w-5 h-5 accent-yellow-400" data-id="${r.id}"></td>
@@ -463,16 +445,20 @@ window.renderTables = () => {
             activeBody.appendChild(tr);
         });
 
-        // 重新初始化圖示 (如果你有使用 lucide 圖示的話)
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    };
-
+        // B. 渲染歷史紀錄
         historyList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "text-zinc-500 text-sm";
-            tr.innerHTML = `<td class="px-6 py-4">${r.id}</td><td class="px-6 py-4">${r.type}</td><td class="px-6 py-4">${r.vendor}</td><td class="px-6 py-4">${r.timestamp || ''}</td><td class="px-6 py-4">${r.items[0]?.n || ''}...</td><td class="px-6 py-4 text-emerald-500 font-bold">已結案</td>`;
+            tr.innerHTML = `
+                <td class="px-6 py-4">${r.id}</td>
+                <td class="px-6 py-4">${r.type}</td>
+                <td class="px-6 py-4 font-bold text-zinc-300">${r.vendor}</td>
+                <td class="px-6 py-4">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</td>
+                <td class="px-6 py-4">${r.items[0]?.n || ''}...</td>
+                <td class="px-6 py-4 text-emerald-500 font-bold">已結案</td>`;
             historyBody.appendChild(tr);
         });
+
         if (window.lucide) lucide.createIcons();
     };
 
