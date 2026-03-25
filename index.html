@@ -296,7 +296,7 @@
         }
     };
 
-    // 4. 新增資料 (POST - CREATE)
+// 4. 新增資料 (POST - CREATE)
     window.saveData = async () => {
         const loader = document.getElementById('loading-overlay');
         loader.style.display = 'flex';
@@ -325,23 +325,31 @@
         };
 
         try {
+            // 修正點：加入 mode: 'no-cors' 解決跨網域問題
             await fetch(gasWebappUrl, {
                 method: 'POST',
+                mode: 'no-cors', 
+                headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ action: "CREATE", ...newRecord })
             });
-            await window.manualSync();
-            window.closeModal();
-            window.showToast('單據已發佈', 'success');
-            // 重設表單...
-            document.getElementById('input-vendor').value = '';
-            document.getElementById('input-note').value = '';
+
+            // 修正點：no-cors 模式下無法直接等待回傳，改用延遲同步
+            setTimeout(async () => {
+                await window.manualSync();
+                window.closeModal();
+                window.showToast('單據已發佈', 'success');
+                document.getElementById('input-vendor').value = '';
+                document.getElementById('input-note').value = '';
+            }, 1000);
+
         } catch (e) {
+            console.error(e);
             window.showToast('發佈失敗', 'danger');
         } finally {
-            loader.style.display = 'none';
+            // 注意：這裡如果 loader 太快消失，使用者會以為沒在動，可以視情況調整
+            setTimeout(() => { loader.style.display = 'none'; }, 1000);
         }
     };
-
     // 5. 更新狀態 (POST - UPDATE_STATUS)
     window.updateStatus = async (id, newStatus) => {
         const loader = document.getElementById('loading-overlay');
