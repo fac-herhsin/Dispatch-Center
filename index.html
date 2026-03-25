@@ -398,7 +398,7 @@
     };
 
     // 7. 介面渲染
-    window.renderTables = () => {
+window.renderTables = () => {
         const activeBody = document.getElementById('active-body');
         const historyBody = document.getElementById('history-body');
         if (!activeBody || !historyBody) return;
@@ -408,26 +408,50 @@
 
         const activeList = window.masterData.filter(r => r.status !== '已結案');
         const historyList = window.masterData.filter(r => r.status === '已結案');
-        document.getElementById('active-count').innerText = activeList.length;
+        
+        const activeCountEl = document.getElementById('active-count');
+        if (activeCountEl) activeCountEl.innerText = activeList.length;
 
         activeList.forEach(r => {
             const tr = document.createElement('tr');
             tr.className = "hover:bg-white/5 transition-colors text-white";
             
             let actionHtml = '';
+            // 只有管理員有刪除權限
             let deleteBtnHtml = (window.currentUserRole === 'admin') ? `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '';
 
+            // --- 權限邏輯開始 ---
+            
+            // 1. 廠務調度 (factory) 的權限：負責配送相關
             if (window.currentUserRole === 'factory') {
-                if (r.status === '待處理') actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-black">確認配送</button>`;
-                else if (r.status === '配送中') {
+                if (r.status === '待處理') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-black">確認配送</button>`;
+                } else if (r.status === '配送中') {
                     const next = (r.type === '加工件') ? '加工中' : '待結案';
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '${next}')" class="px-4 py-2 bg-indigo-600 rounded-lg text-xs font-black">抵達目的地</button>`;
-                } else if (r.status === '加工中') {
+                }
+            } 
+            
+            // 2. 採購/業務 (procure) 的權限：負責確認加工完成
+            else if (window.currentUserRole === 'procure') {
+                if (r.status === '加工中') {
                     actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
                 }
-            } else if (window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') {
-                if (r.status === '待結案') actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-black">結案入庫</button>`;
             }
+
+            // 3. 倉管 (warehouse) 或 管理員 (admin) 的權限：負責最後結案
+            else if (window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') {
+                // 管理員擁有採購的「加工完成」權限
+                if (r.status === '加工中') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
+                } 
+                // 結案權限
+                else if (r.status === '待結案') {
+                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-black">結案入庫</button>`;
+                }
+            }
+
+            // --- 權限邏輯結束 ---
 
             tr.innerHTML = `
                 <td class="px-6 py-5"><input type="checkbox" class="print-checkbox w-5 h-5 accent-yellow-400" data-id="${r.id}"></td>
@@ -438,6 +462,10 @@
                 <td class="px-6 py-5 flex items-center">${actionHtml}${deleteBtnHtml}</td>`;
             activeBody.appendChild(tr);
         });
+
+        // 重新初始化圖示 (如果你有使用 lucide 圖示的話)
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    };
 
         historyList.forEach(r => {
             const tr = document.createElement('tr');
