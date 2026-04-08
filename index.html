@@ -16,28 +16,29 @@
         .bg-brand-yellow { background-color: var(--brand-yellow); }
         .text-brand-yellow { color: var(--brand-yellow); }
         .border-brand-yellow { border-color: var(--brand-yellow); }
-        
         .status-badge { @apply px-2 py-1 rounded text-xs font-bold; }
         .status-completed { background-color: #10b981; color: white; }
         .status-processing { background-color: var(--brand-yellow); color: var(--brand-dark); }
-        
         .card-dark { background-color: var(--brand-gray); border: 1px solid #3f3f46; }
         .input-dark { 
             background-color: #121212; 
             border: 1px solid #3f3f46; 
             @apply rounded-md p-2 w-full text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none placeholder-gray-600;
         }
-        
-        .login-overlay {
-            background: radial-gradient(circle at center, #2d2d2d 0%, #1a1a1a 100%);
-        }
-
-        /* 隱藏捲軸 */
+        .login-overlay { background: radial-gradient(circle at center, #2d2d2d 0%, #1a1a1a 100%); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .loading-overlay { background: rgba(0,0,0,0.7); @apply fixed inset-0 z-[300] flex items-center justify-center hidden; }
     </style>
 </head>
 <body class="min-h-screen pb-20 font-sans">
+
+    <div id="loading" class="loading-overlay">
+        <div class="text-brand-yellow flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-yellow mb-2"></div>
+            <span class="text-sm font-bold">同步資料中...</span>
+        </div>
+    </div>
 
     <!-- 登入選擇畫面 -->
     <div id="loginScreen" class="fixed inset-0 z-[100] login-overlay flex flex-col items-center justify-center p-6">
@@ -51,52 +52,42 @@
         
         <div class="w-full max-w-sm space-y-4">
             <p class="text-center text-gray-400 text-sm mb-6">請選擇您的登入身分</p>
-            
             <button onclick="loginAs('factory')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
                 <div class="flex items-center gap-4">
-                    <div class="p-3 bg-blue-500/10 rounded-lg text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition">
-                        <i data-lucide="factory"></i>
-                    </div>
+                    <div class="p-3 bg-blue-500/10 rounded-lg text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition"><i data-lucide="factory"></i></div>
                     <span class="text-lg font-bold">廠務人員</span>
                 </div>
                 <i data-lucide="chevron-right" class="text-zinc-600"></i>
             </button>
-
             <button onclick="loginAs('purchasing')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
                 <div class="flex items-center gap-4">
-                    <div class="p-3 bg-purple-500/10 rounded-lg text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition">
-                        <i data-lucide="shopping-cart"></i>
-                    </div>
+                    <div class="p-3 bg-purple-500/10 rounded-lg text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition"><i data-lucide="shopping-cart"></i></div>
                     <span class="text-lg font-bold">採購人員</span>
                 </div>
                 <i data-lucide="chevron-right" class="text-zinc-600"></i>
             </button>
-
             <button onclick="loginAs('admin')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
                 <div class="flex items-center gap-4">
-                    <div class="p-3 bg-amber-500/10 rounded-lg text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition">
-                        <i data-lucide="user-cog"></i>
-                    </div>
+                    <div class="p-3 bg-amber-500/10 rounded-lg text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition"><i data-lucide="user-cog"></i></div>
                     <span class="text-lg font-bold">系統管理員</span>
                 </div>
                 <i data-lucide="chevron-right" class="text-zinc-600"></i>
             </button>
         </div>
-        
         <p class="mt-12 text-zinc-600 text-xs">© 2026 何鑫實業 版權所有</p>
     </div>
 
     <!-- 主程式內容 -->
     <div id="mainContent" class="hidden">
-        <!-- 頂部導覽列 -->
         <nav class="bg-black border-b border-zinc-800 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-2xl">
             <div class="flex flex-col">
                 <span class="text-[10px] text-brand-yellow font-black tracking-wider">何鑫實業 / 薪昌</span>
-                <h1 class="text-lg font-black flex items-center gap-2">
-                    載運追蹤系統
-                </h1>
+                <h1 class="text-lg font-black">載運追蹤系統</h1>
             </div>
             <div class="flex items-center gap-4">
+                <button onclick="fetchData()" class="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-brand-yellow transition">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                </button>
                 <div class="text-right">
                     <p id="displayUserRole" class="text-xs font-bold text-brand-yellow"></p>
                     <p class="text-[10px] text-zinc-500">線上運作中</p>
@@ -108,7 +99,6 @@
         </nav>
 
         <div class="max-w-4xl mx-auto p-4">
-            <!-- 快速新增區 -->
             <section id="addSection" class="mb-8 card-dark p-6 rounded-2xl shadow-2xl border-t-4 border-t-brand-yellow">
                 <h2 class="text-lg font-black mb-4 flex items-center gap-2 text-white">
                     <i data-lucide="plus-square" class="text-brand-yellow"></i> 建立新單據
@@ -127,25 +117,18 @@
                         <input type="text" id="customerName" placeholder="請輸入客戶名稱" class="input-dark text-sm">
                     </div>
                     <div>
-                        <label class="block text-[11px] font-black text-zinc-500 mb-1 tracking-widest">負責師傅 / 廠商</label>
+                        <label class="block text-[11px] font-black text-zinc-500 mb-1 tracking-widest">負責師傅</label>
                         <div class="flex gap-1">
-                            <select id="carrierSelect" class="input-dark text-sm flex-1">
-                                <!-- 師傅選項將動態載入 -->
-                            </select>
-                            <button onclick="openCarrierModal()" class="bg-zinc-800 text-brand-yellow px-2 rounded-md border border-zinc-700 hover:bg-zinc-700">
-                                <i data-lucide="plus" class="w-4 h-4"></i>
-                            </button>
+                            <select id="carrierSelect" class="input-dark text-sm flex-1"></select>
+                            <button onclick="openCarrierModal()" class="bg-zinc-800 text-brand-yellow px-2 rounded-md border border-zinc-700 hover:bg-zinc-700"><i data-lucide="plus" class="w-4 h-4"></i></button>
                         </div>
                     </div>
                 </div>
 
-                <!-- 物件明細區 -->
                 <div class="bg-black/40 p-4 rounded-xl mb-4 border border-zinc-800">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-xs font-black text-zinc-400 tracking-widest">物件清單明細</h3>
-                        <button onclick="addItemRow()" class="text-[10px] bg-zinc-800 text-brand-yellow px-3 py-1.5 rounded-lg border border-zinc-700 hover:bg-zinc-700 transition">
-                            + 新增物件
-                        </button>
+                        <button onclick="addItemRow()" class="text-[10px] bg-zinc-800 text-brand-yellow px-3 py-1.5 rounded-lg border border-zinc-700 hover:bg-zinc-700 transition">+ 新增物件</button>
                     </div>
                     <div id="itemsContainer" class="space-y-3">
                         <div class="item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative">
@@ -157,12 +140,9 @@
                     </div>
                 </div>
 
-                <button onclick="addNewShipment()" class="w-full bg-brand-yellow text-black py-3 rounded-xl font-black hover:brightness-110 transition shadow-[0_4px_20px_rgba(251,191,36,0.2)]">
-                    發布載運單據
-                </button>
+                <button onclick="addNewShipment()" class="w-full bg-brand-yellow text-black py-3 rounded-xl font-black hover:brightness-110 transition shadow-[0_4px_20px_rgba(251,191,36,0.2)]">發布載運單據</button>
             </section>
 
-            <!-- 狀態過濾 -->
             <div class="flex gap-3 mb-6 overflow-x-auto pb-2 no-scrollbar">
                 <button onclick="filterTable('all')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">全部單據</button>
                 <button onclick="filterTable('CNC')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">CNC加工</button>
@@ -170,17 +150,14 @@
                 <button onclick="filterTable('GALVANIZING')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">鍍鋅處理</button>
             </div>
 
-            <!-- 列表區 -->
             <div id="shipmentList" class="space-y-6"></div>
         </div>
     </div>
 
-    <!-- 新增師傅 Modal -->
+    <!-- Carrier Modal -->
     <div id="carrierModal" class="fixed inset-0 z-[200] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
         <div class="bg-zinc-900 border border-zinc-700 w-full max-w-xs p-6 rounded-2xl shadow-2xl">
-            <h3 class="text-white font-black mb-4 flex items-center gap-2">
-                <i data-lucide="user-plus" class="text-brand-yellow"></i> 新增師傅 / 廠商
-            </h3>
+            <h3 class="text-white font-black mb-4 flex items-center gap-2"><i data-lucide="user-plus" class="text-brand-yellow"></i> 新增師傅</h3>
             <input type="text" id="newCarrierInput" placeholder="輸入名稱 (如: 陳師傅)" class="input-dark mb-4">
             <div class="flex gap-2">
                 <button onclick="closeCarrierModal()" class="flex-1 py-2 bg-zinc-800 text-zinc-400 rounded-xl font-bold hover:bg-zinc-700">取消</button>
@@ -189,87 +166,92 @@
         </div>
     </div>
 
-    <!-- 提示框 -->
-    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-brand-yellow text-black font-bold px-8 py-3 rounded-xl shadow-2xl opacity-0 transition-all pointer-events-none z-[210]">
-        操作成功
-    </div>
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-brand-yellow text-black font-bold px-8 py-3 rounded-xl shadow-2xl opacity-0 transition-all pointer-events-none z-[210]">操作成功</div>
 
-    <script type="module">
-        let shipments = JSON.parse(localStorage.getItem('shipments')) || [];
+    <script>
+        // --- 重要：請在此填入您的 Google Apps Script 網址 ---
+        const API_URL = "在此貼上您的GAS網址"; 
+
+        let shipments = [];
         let carriers = JSON.parse(localStorage.getItem('carriers')) || ['未指定', '阿芬', '何師傅', '委外貨運'];
         let currentRole = null;
+        const categoryNames = { 'CNC': 'CNC 二工', 'CUSTOMER': '客戶送貨', 'GALVANIZING': '鍍鋅處理' };
 
-        function updateIcons() {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
+        window.onload = async () => {
+            renderCarrierOptions();
+            lucide.createIcons();
+            if (API_URL === "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec") {
+                showToast("請先設定 API_URL");
+            } else {
+                await fetchData();
+            }
+        };
+
+        async function fetchData() {
+            toggleLoading(true);
+            try {
+                const response = await fetch(API_URL);
+                shipments = await response.json();
+                renderList();
+            } catch (e) {
+                showToast("讀取資料失敗");
+            } finally {
+                toggleLoading(false);
             }
         }
 
-        const categoryNames = {
-            'CNC': 'CNC 二工',
-            'CUSTOMER': '客戶送貨',
-            'GALVANIZING': '鍍鋅處理'
-        };
+        async function postToSheet(action, data, id = null) {
+            toggleLoading(true);
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action, data, id })
+                });
+                await fetchData();
+            } catch (e) {
+                showToast("同步失敗");
+            } finally {
+                toggleLoading(false);
+            }
+        }
 
-        // 初始化
-        window.onload = () => {
-            renderCarrierOptions();
-            updateIcons();
-        };
+        function toggleLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
 
-        // 登入功能
         window.loginAs = (role) => {
             currentRole = role;
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('mainContent').classList.remove('hidden');
-            document.getElementById('displayUserRole').textContent = getRoleName(role);
+            document.getElementById('displayUserRole').textContent = { factory: '廠務人員', purchasing: '採購人員', admin: '系統管理員' }[role];
             renderList();
-            updateIcons();
+            lucide.createIcons();
         };
 
         window.logout = () => {
             currentRole = null;
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('mainContent').classList.add('hidden');
-            updateIcons();
+            lucide.createIcons();
         };
 
-        function getRoleName(role) {
-            const names = { factory: '廠務人員', purchasing: '採購人員', admin: '系統管理員' };
-            return names[role];
-        }
-
-        // 師傅管理
         window.renderCarrierOptions = () => {
             const select = document.getElementById('carrierSelect');
             select.innerHTML = carriers.map(c => `<option value="${c}">${c}</option>`).join('');
         };
 
-        window.openCarrierModal = () => {
-            document.getElementById('carrierModal').classList.remove('hidden');
-            document.getElementById('newCarrierInput').focus();
-        };
-
-        window.closeCarrierModal = () => {
-            document.getElementById('carrierModal').classList.add('hidden');
-            document.getElementById('newCarrierInput').value = '';
-        };
-
+        window.openCarrierModal = () => { document.getElementById('carrierModal').classList.remove('hidden'); };
+        window.closeCarrierModal = () => { document.getElementById('carrierModal').classList.add('hidden'); };
         window.saveNewCarrier = () => {
             const name = document.getElementById('newCarrierInput').value.trim();
             if (name && !carriers.includes(name)) {
                 carriers.push(name);
                 localStorage.setItem('carriers', JSON.stringify(carriers));
                 renderCarrierOptions();
-                document.getElementById('carrierSelect').value = name;
                 closeCarrierModal();
-                showToast('已新增師傅');
-            } else if (carriers.includes(name)) {
-                showToast('名稱已存在');
             }
         };
 
-        // 單據管理
         window.addItemRow = () => {
             const container = document.getElementById('itemsContainer');
             const newRow = document.createElement('div');
@@ -280,98 +262,64 @@
                 <div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div>
                 <div class="md:col-span-3"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div>
                 <div class="md:col-span-1 flex items-center justify-center">
-                    <button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600 hover:text-red-500 transition">
-                        <i data-lucide="minus-circle" class="w-4 h-4"></i>
-                    </button>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600 hover:text-red-500 transition"><i data-lucide="minus-circle" class="w-4 h-4"></i></button>
                 </div>
             `;
             container.appendChild(newRow);
-            updateIcons();
+            lucide.createIcons();
         };
 
-        window.addNewShipment = () => {
+        window.addNewShipment = async () => {
             const category = document.getElementById('itemCategory').value;
             const customer = document.getElementById('customerName').value || '未註明客戶';
             const carrier = document.getElementById('carrierSelect').value;
-            
             const rows = document.querySelectorAll('.item-row');
             const items = [];
             rows.forEach(row => {
                 const name = row.querySelector('.item-name').value;
-                if (name) {
-                    items.push({
-                        name: name,
-                        qty: row.querySelector('.item-qty').value || 1,
-                        unit: row.querySelector('.item-unit').value || '件',
-                        note: row.querySelector('.item-note').value || ''
-                    });
-                }
+                if (name) items.push({
+                    name, qty: row.querySelector('.item-qty').value || 1,
+                    unit: row.querySelector('.item-unit').value || '件',
+                    note: row.querySelector('.item-note').value || ''
+                });
             });
 
-            if (items.length === 0) return showToast('請輸入載運物件');
+            if (items.length === 0) return showToast('請輸入物件');
 
             const newEntry = {
-                id: Date.now(),
-                category: category,
-                customer: customer,
-                carrier: carrier,
-                items: items,
-                status: 'INIT',
+                id: Date.now().toString(),
+                category, customer, carrier, items, status: 'INIT',
                 statusText: getInitialStatusText(category),
                 logs: [{time: new Date().toLocaleString(), msg: `單據建立 (${customer})`}],
                 updatedAt: new Date().toLocaleString()
             };
 
-            shipments.unshift(newEntry);
-            saveAndRender();
+            await postToSheet('add', newEntry);
             resetForm();
-            showToast('載運單據已建立');
+            showToast('已發布至雲端');
         };
 
-        function resetForm() {
-            document.getElementById('customerName').value = '';
-            document.getElementById('itemsContainer').innerHTML = `
-                <div class="item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative">
-                    <div class="md:col-span-4"><input type="text" placeholder="物件名稱" class="item-name input-dark text-xs"></div>
-                    <div class="md:col-span-2"><input type="number" placeholder="數量" class="item-qty input-dark text-xs"></div>
-                    <div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div>
-                    <div class="md:col-span-4"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div>
-                </div>
-            `;
-            updateIcons();
+        function getInitialStatusText(cat) {
+            return cat === 'CNC' ? '等待廠端通知 (加工中)' : cat === 'CUSTOMER' ? '待採購轉交訂單' : '待師傅製作完成';
         }
 
-        function getInitialStatusText(category) {
-            if (category === 'CNC') return '等待廠端通知 (加工中)';
-            if (category === 'CUSTOMER') return '待採購轉交訂單';
-            return '待師傅製作完成';
-        }
-
-        window.updateStatus = (id) => {
-            const index = shipments.findIndex(s => s.id === id);
-            if (index === -1) return;
-            const item = shipments[index];
-            let nextStatus = '';
-            let nextText = '';
-
-            switch (item.category) {
-                case 'CNC':
-                    if (item.status === 'INIT') { nextStatus = 'W1'; nextText = '安排載往加工廠'; }
-                    else if (item.status === 'W1') { nextStatus = 'W2'; nextText = '加工中 (等廠端通知)'; }
-                    else if (item.status === 'W2') { nextStatus = 'W3'; nextText = '已完工 (待載回)'; }
-                    else if (item.status === 'W3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
-                    break;
-                case 'CUSTOMER':
-                    if (item.status === 'INIT') { nextStatus = 'C1'; nextText = '廠務準備中'; }
-                    else if (item.status === 'C1') { nextStatus = 'C2'; nextText = '安排師傅載運中'; }
-                    else if (item.status === 'C2') { nextStatus = 'DONE'; nextText = '客戶已簽收完成'; }
-                    break;
-                case 'GALVANIZING':
-                    if (item.status === 'INIT') { nextStatus = 'G1'; nextText = '廠務安排載運(鍍鋅)'; }
-                    else if (item.status === 'G1') { nextStatus = 'G2'; nextText = '鍍鋅中 (等通知)'; }
-                    else if (item.status === 'G2') { nextStatus = 'G3'; nextText = '已完成 (待安排載回)'; }
-                    else if (item.status === 'G3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
-                    break;
+        window.updateStatus = async (id) => {
+            const item = shipments.find(s => s.id.toString() === id.toString());
+            let nextStatus = '', nextText = '';
+            if (item.category === 'CNC') {
+                if (item.status === 'INIT') { nextStatus = 'W1'; nextText = '安排載往加工廠'; }
+                else if (item.status === 'W1') { nextStatus = 'W2'; nextText = '加工中 (等廠端通知)'; }
+                else if (item.status === 'W2') { nextStatus = 'W3'; nextText = '已完工 (待載回)'; }
+                else if (item.status === 'W3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
+            } else if (item.category === 'CUSTOMER') {
+                if (item.status === 'INIT') { nextStatus = 'C1'; nextText = '廠務準備中'; }
+                else if (item.status === 'C1') { nextStatus = 'C2'; nextText = '安排師傅載運中'; }
+                else if (item.status === 'C2') { nextStatus = 'DONE'; nextText = '客戶已簽收完成'; }
+            } else if (item.category === 'GALVANIZING') {
+                if (item.status === 'INIT') { nextStatus = 'G1'; nextText = '廠務安排載運(鍍鋅)'; }
+                else if (item.status === 'G1') { nextStatus = 'G2'; nextText = '鍍鋅中 (等通知)'; }
+                else if (item.status === 'G2') { nextStatus = 'G3'; nextText = '已完成 (待安排載回)'; }
+                else if (item.status === 'G3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
             }
 
             if (nextStatus) {
@@ -379,130 +327,94 @@
                 item.statusText = nextText;
                 item.logs.push({time: new Date().toLocaleString(), msg: nextText});
                 item.updatedAt = new Date().toLocaleString();
-                saveAndRender();
-                showToast('狀態更新成功');
+                await postToSheet('update', item, id);
             }
         };
 
-        window.deleteItem = (id) => {
+        window.deleteItem = async (id) => {
             if (currentRole !== 'admin') return showToast('權限不足');
-            shipments = shipments.filter(s => s.id !== id);
-            saveAndRender();
+            await postToSheet('delete', null, id);
         };
-
-        function saveAndRender() {
-            localStorage.setItem('shipments', JSON.stringify(shipments));
-            renderList();
-        }
 
         function renderList(filter = 'all') {
             const listContainer = document.getElementById('shipmentList');
-            let displayItems = shipments;
-            if (filter !== 'all') displayItems = shipments.filter(s => s.category === filter);
+            let displayItems = filter === 'all' ? shipments : shipments.filter(s => s.category === filter);
 
             if (displayItems.length === 0) {
-                listContainer.innerHTML = `<div class="text-center py-20 text-zinc-600 font-bold tracking-widest">目前沒有任何單據</div>`;
+                listContainer.innerHTML = `<div class="text-center py-20 text-zinc-600 font-bold">目前沒有資料</div>`;
                 return;
             }
 
             listContainer.innerHTML = displayItems.map(item => `
-                <div class="card-dark rounded-2xl overflow-hidden shadow-2xl transition-all hover:border-zinc-500">
+                <div class="card-dark rounded-2xl overflow-hidden shadow-2xl mb-4">
                     <div class="p-4 border-b border-zinc-800 flex justify-between items-start bg-black/20">
                         <div>
                             <div class="flex items-center gap-2 mb-1">
-                                <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-zinc-800 text-brand-yellow tracking-tighter border border-zinc-700">${categoryNames[item.category]}</span>
+                                <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-zinc-800 text-brand-yellow border border-zinc-700">${categoryNames[item.category]}</span>
                                 <h3 class="font-black text-white text-lg">${item.customer}</h3>
                             </div>
-                            <div class="flex flex-wrap gap-4 text-[10px] text-zinc-500 font-bold">
-                                <span class="flex items-center gap-1"><i data-lucide="user" class="w-3 h-3 text-brand-yellow"></i> 負責師傅: ${item.carrier}</span>
-                                <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3 text-brand-yellow"></i> 更新時間: ${item.updatedAt}</span>
-                            </div>
+                            <div class="text-[10px] text-zinc-500 font-bold">師傅: ${item.carrier} | 更新: ${item.updatedAt}</div>
                         </div>
-                        <span class="status-badge ${item.status === 'DONE' ? 'status-completed' : 'status-processing'}">
-                            ${item.statusText}
-                        </span>
+                        <span class="status-badge ${item.status === 'DONE' ? 'status-completed' : 'status-processing'}">${item.statusText}</span>
                     </div>
-
                     <div class="p-4 bg-zinc-900/50">
                         <table class="w-full text-left text-xs">
-                            <thead>
-                                <tr class="text-zinc-500 border-b border-zinc-800">
-                                    <th class="pb-2 font-black text-zinc-600 uppercase">物件名稱</th>
-                                    <th class="pb-2 font-black text-center w-20 text-zinc-600 uppercase">數量</th>
-                                    <th class="pb-2 font-black text-zinc-600 uppercase">備註</th>
-                                </tr>
-                            </thead>
                             <tbody class="divide-y divide-zinc-800/50">
                                 ${item.items.map(subItem => `
                                     <tr>
-                                        <td class="py-3 font-bold text-zinc-200">${subItem.name}</td>
-                                        <td class="py-3 text-center text-zinc-400 font-mono">${subItem.qty} ${subItem.unit}</td>
-                                        <td class="py-3 text-zinc-500 text-[11px] italic">${subItem.note || '-'}</td>
+                                        <td class="py-2 text-zinc-200">${subItem.name}</td>
+                                        <td class="py-2 text-center text-zinc-400">${subItem.qty} ${subItem.unit}</td>
+                                        <td class="py-2 text-zinc-500 italic">${subItem.note || '-'}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
-                    
                     <div class="px-4 py-3 bg-black/40 border-t border-zinc-800 flex justify-between items-center">
                         <div class="flex gap-2">
                             ${renderActionButtons(item)}
-                            ${currentRole === 'admin' ? `<button onclick="deleteItem(${item.id})" class="text-zinc-600 p-2 hover:text-red-500 transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                            ${currentRole === 'admin' ? `<button onclick="deleteItem('${item.id}')" class="text-zinc-600 p-2 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
                         </div>
-                        <button onclick="toggleLogs(${item.id})" class="text-[10px] text-zinc-600 font-bold hover:text-zinc-400 flex items-center gap-1">
-                            追蹤紀錄 <i data-lucide="history" class="w-3 h-3"></i>
-                        </button>
+                        <button onclick="document.getElementById('logs-${item.id}').classList.toggle('hidden')" class="text-[10px] text-zinc-600 font-bold">歷史紀錄</button>
                     </div>
-                    
-                    <div id="logs-${item.id}" class="hidden p-4 bg-black/60 text-[10px] space-y-2 border-t border-zinc-800 font-mono">
-                        ${item.logs.map(l => `<div class="flex gap-3"><span class="text-brand-yellow/50">${l.time}</span> <span class="text-zinc-400">${l.msg}</span></div>`).join('')}
+                    <div id="logs-${item.id}" class="hidden p-4 bg-black/60 text-[10px] space-y-1 font-mono">
+                        ${item.logs.map(l => `<div><span class="text-brand-yellow/50">${l.time}</span> ${l.msg}</div>`).join('')}
                     </div>
                 </div>
             `).join('');
-            
-            updateIcons();
+            lucide.createIcons();
         }
 
         function renderActionButtons(item) {
-            if (item.status === 'DONE') return '<div class="flex items-center gap-1 text-green-500 text-xs font-black py-2"><i data-lucide="check-circle" class="w-4 h-4"></i> 流程已結束</div>';
-            
-            const btnClass = "bg-brand-yellow text-black px-6 py-2 rounded-lg text-xs font-black hover:brightness-110 transition shadow-lg active:scale-95";
-            
-            let canOperate = false;
+            if (item.status === 'DONE') return '<div class="text-green-500 text-xs font-black">✓ 結案</div>';
+            let can = (currentRole === 'admin');
             if (item.category === 'CNC') {
-                if ((item.status === 'INIT' || item.status === 'W1' || item.status === 'W3') && currentRole === 'factory') canOperate = true;
-                if (item.status === 'W2' && currentRole === 'purchasing') canOperate = true;
+                if (['INIT', 'W1', 'W3'].includes(item.status) && currentRole === 'factory') can = true;
+                if (item.status === 'W2' && currentRole === 'purchasing') can = true;
             } else if (item.category === 'CUSTOMER') {
-                if (item.status === 'INIT' && currentRole === 'purchasing') canOperate = true;
-                if ((item.status === 'C1' || item.status === 'C2') && currentRole === 'factory') canOperate = true;
+                if (item.status === 'INIT' && currentRole === 'purchasing') can = true;
+                if (['C1', 'C2'].includes(item.status) && currentRole === 'factory') can = true;
             } else if (item.category === 'GALVANIZING') {
-                if ((item.status === 'INIT' || item.status === 'G1' || item.status === 'G3') && currentRole === 'factory') canOperate = true;
-                if (item.status === 'G2' && currentRole === 'purchasing') canOperate = true;
+                if (['INIT', 'G1', 'G3'].includes(item.status) && currentRole === 'factory') can = true;
+                if (item.status === 'G2' && currentRole === 'purchasing') can = true;
             }
-
-            if (canOperate || currentRole === 'admin') {
-                return `<button onclick="updateStatus(${item.id})" class="${btnClass}">更新至下一階段</button>`;
-            }
-
-            return `<span class="text-zinc-600 text-[10px] font-bold py-2 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3 text-zinc-700"></i> 待 ${item.status.includes('2') || (item.status === 'INIT' && item.category === 'CUSTOMER') ? '採購部門' : '廠務端'} 處理</span>`;
+            return can ? `<button onclick="updateStatus('${item.id}')" class="bg-brand-yellow text-black px-4 py-1.5 rounded-lg text-xs font-black">更新階段</button>` 
+                       : `<span class="text-zinc-600 text-[10px]">等待處理中...</span>`;
         }
 
-        window.toggleLogs = (id) => {
-            const el = document.getElementById(`logs-${id}`);
-            el.classList.toggle('hidden');
-        };
-
-        window.filterTable = (type) => {
-            renderList(type);
-        };
+        function resetForm() {
+            document.getElementById('customerName').value = '';
+            document.getElementById('itemsContainer').innerHTML = `<div class="item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative"><div class="md:col-span-4"><input type="text" placeholder="物件名稱" class="item-name input-dark text-xs"></div><div class="md:col-span-2"><input type="number" placeholder="數量" class="item-qty input-dark text-xs"></div><div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div><div class="md:col-span-4"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div></div>`;
+            lucide.createIcons();
+        }
 
         function showToast(msg) {
             const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.classList.remove('opacity-0');
-            t.classList.add('opacity-100');
+            t.textContent = msg; t.classList.remove('opacity-0'); t.classList.add('opacity-100');
             setTimeout(() => t.classList.add('opacity-0'), 2000);
         }
+
+        window.filterTable = (type) => renderList(type);
     </script>
 </body>
 </html>
