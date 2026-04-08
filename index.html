@@ -1,304 +1,372 @@
-import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  query, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc,
-  doc,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { 
-  Truck, 
-  UserCog, 
-  ShoppingCart, 
-  Plus, 
-  History, 
-  LogOut, 
-  Trash2,
-  CheckCircle2,
-  Clock,
-  Factory,
-  ChevronRight,
-  Database
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>何鑫實業 / 薪昌 - 載運追蹤管理系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// --- 請填入您的 Google Apps Script 網址 ---
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
+        // --- 配置區 ---
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'logistic-track-system';
+        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; // 填入 Google Apps Script 網址
 
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'logistic-track-system';
+        const FLOWS = {
+            'CNC 二工加工': [
+                { id: 'factory_out', label: '廠務安排載出', role: 'factory' },
+                { id: 'processing', label: '加工廠加工中', role: 'purchase' },
+                { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
+                { id: 'factory_back', label: '廠務安排載回', role: 'factory' },
+                { id: 'completed', label: '流程完成', role: 'system' }
+            ],
+            '客戶買賣': [
+                { id: 'purchase_order', label: '採購獲取訂單', role: 'purchase' },
+                { id: 'factory_prepare', label: '廠務準備物件', role: 'factory' },
+                { id: 'factory_delivery', label: '廠內師傅配送中', role: 'factory' },
+                { id: 'completed', label: '送達完成', role: 'system' }
+            ],
+            '鍍鋅加工': [
+                { id: 'factory_production', label: '廠內製作完成', role: 'factory' },
+                { id: 'factory_out', label: '廠務安排載出', role: 'factory' },
+                { id: 'processing', label: '鍍鋅廠加工中', role: 'purchase' },
+                { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
+                { id: 'factory_back', label: '廠務安排載回', role: 'factory' },
+                { id: 'completed', label: '流程完成', role: 'system' }
+            ]
+        };
 
-const FLOWS = {
-  'CNC 二工加工': [
-    { id: 'factory_out', label: '廠務安排載出', role: 'factory' },
-    { id: 'processing', label: '加工廠加工中', role: 'purchase' },
-    { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
-    { id: 'factory_notified', label: '採購通知廠務可載回', role: 'purchase' },
-    { id: 'factory_back', label: '廠務安排載回', role: 'factory' },
-    { id: 'completed', label: '完成', role: 'system' }
-  ],
-  '客戶購買': [
-    { id: 'purchase_order', label: '採購接獲訂單', role: 'purchase' },
-    { id: 'factory_prepare', label: '廠務準備物件', role: 'factory' },
-    { id: 'factory_delivery', label: '廠內師傅載送中', role: 'factory' },
-    { id: 'completed', label: '送達完成', role: 'system' }
-  ],
-  '鍍鋅加工': [
-    { id: 'factory_production', label: '廠內製作完成', role: 'factory' },
-    { id: 'factory_out', label: '廠務安排載出(師傅/委外)', role: 'factory' },
-    { id: 'processing', label: '鍍鋅廠加工中', role: 'purchase' },
-    { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
-    { id: 'factory_notified', label: '採購通知廠務可載回', role: 'purchase' },
-    { id: 'factory_back', label: '廠務安排載回(師傅/委外)', role: 'factory' },
-    { id: 'completed', label: '完成', role: 'system' }
-  ]
-};
+        const MASTER_LIST = ["何師傅", "阿芬", "陳先生", "張經理"];
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [view, setView] = useState('login'); 
-  const [orders, setOrders] = useState([]);
-  const [filter, setFilter] = useState('全部單據');
-  const [syncing, setSyncing] = useState(false);
+        // 應用程式狀態
+        let currentUser = null;
+        let currentView = 'login';
+        let orders = [];
+        let items = [{ id: Date.now(), name: '', qty: '', note: '' }];
 
-  const [orderType, setOrderType] = useState('CNC 二工加工');
-  const [customerName, setCustomerName] = useState('');
-  const [masterName, setMasterName] = useState('阿芬');
-  const [isExternal, setIsExternal] = useState(false);
-  const [items, setItems] = useState([{ id: Date.now(), name: '', qty: '', unit: '', note: '' }]);
+        // 初始化圖標函式 - 使用全域 lucide 物件
+        const refreshIcons = () => {
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        };
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+        // --- 同步至 Google 試算表 ---
+        async function syncToGoogleSheets(orderData) {
+            if (!SHEET_API_URL) return;
+            try {
+                const itemsSummary = orderData.items?.length > 0
+                    ? orderData.items.map(i => `${i.name}(${i.qty}) ${i.note ? `[${i.note}]` : ''}`).join(', ')
+                    : '無明細';
+
+                const payload = { ...orderData, itemsSummary };
+                await fetch(SHEET_API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) { console.error("試算表同步失敗:", err); }
         }
-      } catch (err) { setError("連線失敗"); }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (u) setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
-    return onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setOrders(data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-    }, (err) => setError("資料同步錯誤"));
-  }, [user]);
+        // --- 視圖渲染器 ---
+        const render = () => {
+            const root = document.getElementById('app');
+            if (!root) return;
 
-  // --- 同步至 Google 試算表 ---
-  const syncToGoogleSheet = async (orderData) => {
-    if (!GOOGLE_SCRIPT_URL) return;
-    setSyncing(true);
-    try {
-      const itemsSummary = orderData.items.map(i => `${i.name}(${i.qty}${i.note})`).join(', ');
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors', // 重要：避免跨域問題
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: orderData.id || "NEW",
-          type: orderData.type,
-          customerName: orderData.customerName,
-          masterName: orderData.masterName,
-          status: orderData.status,
-          itemsSummary: itemsSummary
-        })
-      });
-    } catch (err) {
-      console.error("試算表同步失敗", err);
-    } finally {
-      setSyncing(false);
-    }
-  };
+            if (currentView === 'login') {
+                root.innerHTML = `
+                <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white">
+                    <div class="bg-yellow-500 p-5 rounded-3xl mb-8 shadow-2xl shadow-yellow-500/20">
+                        <i data-lucide="truck" class="w-12 h-12 text-neutral-900"></i>
+                    </div>
+                    <h1 class="text-4xl font-black mb-2 tracking-tighter">何鑫實業 / 薪昌</h1>
+                    <p class="text-yellow-500 font-bold mb-12 tracking-[0.3em] text-sm">載運追蹤管理系統 v2.0</p>
+                    <div class="w-full max-w-sm space-y-4">
+                        <button onclick="window.setView('factory')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
+                            <div class="flex items-center space-x-4">
+                                <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400"><i data-lucide="factory"></i></div>
+                                <span class="text-lg font-bold">廠務人員</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
+                        </button>
+                        <button onclick="window.setView('purchase')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
+                            <div class="flex items-center space-x-4">
+                                <div class="p-3 rounded-xl bg-purple-500/10 text-purple-400"><i data-lucide="package"></i></div>
+                                <span class="text-lg font-bold">採購人員</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
+                        </button>
+                        <button onclick="window.setView('admin')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
+                            <div class="flex items-center space-x-4">
+                                <div class="p-3 rounded-xl bg-orange-500/10 text-orange-400"><i data-lucide="settings"></i></div>
+                                <span class="text-lg font-bold">系統管理員</span>
+                            </div>
+                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
+                        </button>
+                    </div>
+                </div>`;
+            } else {
+                root.innerHTML = `
+                <div class="min-h-screen bg-black text-gray-200 pb-20">
+                    <header class="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-xl sticky top-0 z-50">
+                        <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+                            <div class="flex items-center space-x-4">
+                                <div class="bg-yellow-500 p-2 rounded-lg"><i data-lucide="truck" class="text-black"></i></div>
+                                <div>
+                                    <p class="text-[10px] text-yellow-500 font-black tracking-widest uppercase">Management</p>
+                                    <h1 class="text-xl font-black tracking-tight">載運單據中心</h1>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <span class="text-xs bg-neutral-800 px-3 py-1 rounded-full text-neutral-400 border border-neutral-700">身分：${currentView}</span>
+                                <button onclick="window.setView('login')" class="p-2.5 bg-neutral-900 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white">
+                                    <i data-lucide="log-out" class="w-[18px] h-[18px]"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+                    <main class="max-w-4xl mx-auto p-4 md:p-6 space-y-10">
+                        ${(currentView === 'factory' || currentView === 'admin') ? `
+                        <section class="bg-neutral-900 border border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+                            <div class="flex items-center space-x-3 mb-8">
+                                <div class="w-1.5 h-6 bg-yellow-500 rounded-full"></div>
+                                <h2 class="text-2xl font-black text-white">建立新載運任務</h2>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-white">
+                                <div class="space-y-2">
+                                    <label class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">載運類別</label>
+                                    <select id="newOrderType" class="w-full bg-neutral-800 border-2 border-neutral-800 rounded-2xl p-4 focus:border-yellow-500 outline-none">
+                                        ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">客戶/加工廠名稱</label>
+                                    <input id="newCustomerName" placeholder="輸入名稱" class="w-full bg-neutral-800 border-2 border-neutral-800 rounded-2xl p-4 focus:border-yellow-500 outline-none" />
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">負責師傅</label>
+                                    <select id="newMasterName" class="w-full bg-neutral-800 border-2 border-neutral-800 rounded-2xl p-4 focus:border-yellow-500 outline-none">
+                                        ${MASTER_LIST.map(m => `<option value="${m}">${m}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="bg-black/50 rounded-3xl p-6 mb-8 border border-neutral-800 text-white">
+                                <div class="flex items-center justify-between mb-6">
+                                    <div class="flex items-center space-x-2">
+                                        <i data-lucide="package" class="text-yellow-500 w-4 h-4"></i>
+                                        <span class="text-sm font-bold">清單明細</span>
+                                    </div>
+                                    <button onclick="window.addItem()" class="text-xs bg-yellow-500 text-black font-black px-4 py-2 rounded-xl flex items-center">
+                                        <i data-lucide="plus" class="w-3 h-3 mr-1"></i> 新增項目
+                                    </button>
+                                </div>
+                                <div id="itemsContainer" class="space-y-3">
+                                    ${items.map((item, idx) => `
+                                        <div class="flex flex-col md:flex-row gap-2 items-center">
+                                            <input placeholder="物件名稱" class="flex-grow w-full bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm focus:border-yellow-500 outline-none" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
+                                            <div class="flex w-full md:w-auto gap-2">
+                                                <input placeholder="數量" class="w-20 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm text-center" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
+                                                <input placeholder="備註" class="flex-grow md:w-40 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm" onchange="window.updateItem(${idx}, 'note', this.value)" value="${item.note}" />
+                                                <button onclick="window.removeItem(${item.id})" class="p-3 text-neutral-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl hover:bg-yellow-400 transition-all flex items-center justify-center">
+                                確認發布並同步至雲端 <i data-lucide="arrow-right" class="ml-2"></i>
+                            </button>
+                        </section>` : ''}
+                        
+                        <div class="space-y-8">
+                            <h3 class="text-xl font-black text-white px-2">即時單據動態</h3>
+                            <div id="ordersList" class="grid gap-6"></div>
+                        </div>
+                    </main>
+                </div>`;
+                renderOrders();
+            }
+            refreshIcons();
+        };
 
-  const handlePublishOrder = async () => {
-    if (!customerName) { alert("請輸入客戶或物件名稱"); return; }
-    try {
-      const newOrder = {
-        type: orderType,
-        customerName,
-        masterName: isExternal ? `${masterName} (委外)` : masterName,
-        items: items.filter(i => i.name !== ''),
-        currentStepIndex: 0,
-        status: FLOWS[orderType][0].label,
-        createdAt: serverTimestamp(),
-      };
-      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder);
-      
-      // 同步到試算表
-      syncToGoogleSheet({ ...newOrder, id: docRef.id });
+        const renderOrders = () => {
+            const container = document.getElementById('ordersList');
+            if (!container) return;
+            if (orders.length === 0) {
+                container.innerHTML = `
+                <div class="text-center py-20 border-2 border-dashed border-neutral-900 rounded-[2.5rem] text-neutral-600">
+                    <i data-lucide="package" class="mx-auto mb-4 opacity-20 w-12 h-12"></i>
+                    <p>目前尚無載運單據</p>
+                </div>`;
+            } else {
+                container.innerHTML = orders.map(order => {
+                    const flow = FLOWS[order.type] || [];
+                    const isFinished = order.currentStepIndex === flow.length - 1;
+                    const canProgress = (currentView === flow[order.currentStepIndex]?.role) || currentView === 'admin';
+                    const progress = Math.round(((order.currentStepIndex + 1) / flow.length) * 100);
 
-      setCustomerName('');
-      setItems([{ id: Date.now(), name: '', qty: '', unit: '', note: '' }]);
-    } catch (err) { setError("發布失敗"); }
-  };
+                    return `
+                    <div class="bg-neutral-900 border border-neutral-800 rounded-[2rem] p-8 group hover:border-neutral-600 transition-all">
+                        <div class="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
+                            <div>
+                                <span class="bg-yellow-500/10 text-yellow-500 text-[10px] px-3 py-1 rounded-full uppercase font-black border border-yellow-500/20">${order.type}</span>
+                                <h2 class="text-3xl font-black text-white mt-3 tracking-tighter">${order.customerName}</h2>
+                            </div>
+                            <div class="bg-black/50 p-4 rounded-2xl border border-neutral-800 min-w-[160px] text-center">
+                                <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-1">任務階段</p>
+                                <p class="text-lg font-black ${isFinished ? 'text-green-400' : 'text-yellow-500'}">${order.status}</p>
+                            </div>
+                        </div>
+                        <div class="mb-8 space-y-2">
+                            <div class="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                                <span>進度比例</span><span>${progress}%</span>
+                            </div>
+                            <div class="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                                <div class="h-full ${isFinished ? 'bg-green-500' : 'bg-yellow-500'} transition-all duration-1000" style="width: ${progress}%"></div>
+                            </div>
+                        </div>
+                        <div class="grid md:grid-cols-2 gap-8 items-end">
+                            <div class="space-y-4">
+                                <div class="flex items-center text-sm font-bold text-neutral-300 bg-neutral-800/50 w-fit px-4 py-2 rounded-xl border border-neutral-700">
+                                    <i data-lucide="user" class="mr-2 text-yellow-500 w-4 h-4"></i>負責師傅: <span class="ml-2 text-white">${order.masterName}</span>
+                                </div>
+                                <div class="space-y-2 text-white">
+                                    <p class="text-[10px] font-bold text-neutral-500 uppercase">物件明細</p>
+                                    <div class="bg-black/40 p-4 rounded-2xl border border-neutral-800/50">
+                                        ${order.items?.map(it => `
+                                            <div class="flex justify-between items-center py-2 text-xs border-b border-neutral-800 last:border-0">
+                                                <span class="font-bold">${it.name} <span class="text-yellow-500 ml-1">× ${it.qty}</span></span>
+                                                <span class="text-[10px] text-neutral-500 italic">${it.note || ''}</span>
+                                            </div>
+                                        `).join('') || '無'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                ${canProgress && !isFinished ? `
+                                    <button onclick="window.nextStep('${order.id}')" class="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-yellow-500 transition-all flex items-center justify-center group">
+                                        下一步：${flow[order.currentStepIndex + 1]?.label || '完成'} 
+                                        <i data-lucide="arrow-right" class="ml-2 group-hover:translate-x-2 transition-all w-5 h-5"></i>
+                                    </button>
+                                ` : `
+                                    <div class="w-full py-4 rounded-2xl border-2 border-dashed border-neutral-800 text-neutral-600 text-center font-bold uppercase tracking-widest text-xs">
+                                        ${isFinished ? '✓ 任務已全數完成' : '等待他人簽核中'}
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+                refreshIcons();
+            }
+        };
 
-  const nextStep = async (order) => {
-    const flow = FLOWS[order.type];
-    const nextIndex = order.currentStepIndex + 1;
-    if (nextIndex >= flow.length) return;
+        // --- 控制邏輯 ---
+        window.setView = (v) => { currentView = v; render(); };
+        window.addItem = () => { items.push({ id: Date.now(), name: '', qty: '', note: '' }); render(); };
+        window.updateItem = (idx, field, val) => { items[idx][field] = val; };
+        window.removeItem = (id) => { if (items.length > 1) { items = items.filter(i => i.id !== id); render(); } };
 
-    try {
-      const updatedStatus = flow[nextIndex].label;
-      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id);
-      await updateDoc(orderRef, {
-        currentStepIndex: nextIndex,
-        status: updatedStatus,
-        updatedAt: serverTimestamp()
-      });
+        window.handleCreate = async () => {
+            const customerName = document.getElementById('newCustomerName')?.value;
+            const type = document.getElementById('newOrderType')?.value;
+            const masterName = document.getElementById('newMasterName')?.value;
+            if (!customerName || !customerName.trim()) return alert("請輸入客戶名稱");
 
-      // 同步最新狀態到試算表
-      syncToGoogleSheet({ ...order, status: updatedStatus });
+            const newOrder = {
+                type, customerName, masterName,
+                items: items.filter(i => i.name.trim() !== ""),
+                currentStepIndex: 0,
+                status: FLOWS[type][0].label,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                createdBy: auth.currentUser?.uid || 'anonymous'
+            };
 
-    } catch (err) { setError("更新失敗"); }
-  };
+            try {
+                const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder);
+                syncToGoogleSheets({ id: docRef.id, ...newOrder, status: "(新單) " + newOrder.status });
+                
+                // 重置表單
+                items = [{ id: Date.now(), name: '', qty: '', note: '' }];
+                render();
+            } catch (err) {
+                console.error("建立訂單失敗:", err);
+            }
+        };
 
-  if (loading) return <div className="min-h-screen bg-[#111] flex items-center justify-center font-sans"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-500"></div></div>;
-
-  if (view === 'login') return (
-    <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center p-6 text-white font-sans text-center">
-      <div className="bg-yellow-500 p-5 rounded-3xl mb-8 shadow-2xl shadow-yellow-500/20">
-        <Truck size={64} className="text-black" />
-      </div>
-      <h1 className="text-4xl font-black mb-1">何鑫實業 / 薪昌</h1>
-      <p className="text-yellow-500 tracking-[0.4em] font-bold mb-16">載運追蹤系統 (雲端連動版)</p>
-      <div className="w-full max-w-sm space-y-4">
-        <RoleButton icon={<Factory className="text-blue-400" />} title="廠務人員" desc="安排載運、確認回廠" onClick={() => setView('factory')} />
-        <RoleButton icon={<ShoppingCart className="text-purple-400" />} title="採購人員" desc="通知與確認進度" onClick={() => setView('purchase')} />
-        <RoleButton icon={<UserCog className="text-orange-400" />} title="系統管理者" desc="完整流程監控" onClick={() => setView('admin')} />
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white font-sans">
-      <header className="bg-black/90 backdrop-blur-md p-4 flex justify-between items-center border-b border-gray-900 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="bg-yellow-500 p-2 rounded-lg"><Truck size={20} className="text-black"/></div>
-          <h2 className="text-xl font-black tracking-tighter">Hexin / Xinchang</h2>
-        </div>
-        <div className="flex items-center gap-4">
-          {syncing && (
-            <div className="flex items-center gap-2 text-yellow-500 text-[10px] font-bold animate-pulse">
-              <Database size={12}/> 同步試算表中...
-            </div>
-          )}
-          <button onClick={() => setView('login')} className="bg-gray-900 p-2.5 rounded-xl text-gray-400"><LogOut size={20}/></button>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-10">
-        {/* 單據建立區 */}
-        <section className="bg-[#181818] rounded-[2.5rem] p-8 border border-gray-800 shadow-2xl">
-          <div className="flex items-center gap-3 mb-10">
-            <Plus className="bg-yellow-500 text-black rounded-lg p-1" size={24} />
-            <h3 className="text-2xl font-black italic">建立新載運單據</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-            <select value={orderType} onChange={(e) => setOrderType(e.target.value)} className="bg-black border-2 border-gray-800 rounded-2xl p-4 outline-none focus:border-yellow-500 font-bold">
-              {Object.keys(FLOWS).map(f => <option key={f}>{f}</option>)}
-            </select>
-            <input type="text" placeholder="客戶/物件名稱" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="bg-black border-2 border-gray-800 rounded-2xl p-4 outline-none focus:border-yellow-500 font-bold" />
-            <div className="flex gap-2">
-              <select value={masterName} onChange={(e) => setMasterName(e.target.value)} className="flex-1 bg-black border-2 border-gray-800 rounded-2xl p-4 outline-none font-bold">
-                <option>阿芬</option><option>何師師傅</option><option>張師傅</option><option>委外廠商</option>
-              </select>
-              <button onClick={() => setIsExternal(!isExternal)} className={`px-4 rounded-2xl border-2 transition-all ${isExternal ? 'bg-orange-500/20 border-orange-500 text-orange-500' : 'bg-gray-800 border-gray-700 text-gray-500'}`}><Truck size={20} /></button>
-            </div>
-          </div>
-
-          <div className="bg-black/40 rounded-3xl p-6 border border-gray-800/50 mb-8">
-            {items.map((item) => (
-              <div key={item.id} className="grid grid-cols-12 gap-3 mb-3">
-                <input placeholder="物件" className="col-span-5 bg-black/60 border border-gray-800 p-3 rounded-xl text-sm" value={item.name} onChange={(e) => setItems(items.map(i => i.id === item.id ? {...i, name: e.target.value} : i))} />
-                <input placeholder="數量" className="col-span-2 bg-black/60 border border-gray-800 p-3 rounded-xl text-sm text-center" value={item.qty} onChange={(e) => setItems(items.map(i => i.id === item.id ? {...i, qty: e.target.value} : i))} />
-                <input placeholder="備註" className="col-span-4 bg-black/60 border border-gray-800 p-3 rounded-xl text-sm" value={item.note} onChange={(e) => setItems(items.map(i => i.id === item.id ? {...i, note: e.target.value} : i))} />
-                <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="col-span-1 text-gray-700 hover:text-red-500 flex justify-center items-center"><Trash2 size={18}/></button>
-              </div>
-            ))}
-            <button onClick={() => setItems([...items, { id: Date.now(), name: '', qty: '', unit: '', note: '' }])} className="text-xs font-black uppercase text-yellow-500">+ 新增物件明細</button>
-          </div>
-          <button onClick={handlePublishOrder} className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-6 rounded-3xl transition-all shadow-xl text-xl tracking-[0.5em]">發布單據並同步雲端</button>
-        </section>
-
-        {/* 篩選與清單 */}
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {['全部單據', 'CNC', '客戶', '鍍鋅'].map(t => (
-            <button key={t} onClick={() => setFilter(t)} className={`text-xs font-black px-6 py-2.5 rounded-full border-2 whitespace-nowrap ${filter === t ? 'bg-yellow-500 border-yellow-500 text-black' : 'border-gray-800 text-gray-500'}`}>{t}</button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-6">
-          {orders.filter(o => filter === '全部單據' || o.type.includes(filter)).map(order => {
+        window.nextStep = async (orderId) => {
+            const order = orders.find(o => o.id === orderId);
             const flow = FLOWS[order.type];
-            const currentStep = flow[order.currentStepIndex];
-            const isFinished = order.currentStepIndex === flow.length - 1;
-            const canAction = (currentStep.role === view || view === 'admin');
+            if (order.currentStepIndex < flow.length - 1) {
+                const nextIndex = order.currentStepIndex + 1;
+                const nextStatus = flow[nextIndex].label;
+                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
 
-            return (
-              <div key={order.id} className={`bg-[#141414] rounded-[2rem] border-2 transition-all p-8 ${isFinished ? 'border-emerald-500/20' : 'border-gray-800'}`}>
-                <div className="flex flex-col md:flex-row justify-between gap-10">
-                  <div className="flex-1 space-y-4">
-                    <span className="px-3 py-1 bg-gray-900 rounded-lg text-[10px] font-black text-gray-500 uppercase">{order.type}</span>
-                    <h4 className="text-4xl font-black">{order.customerName}</h4>
-                    <div className="flex items-center gap-4 text-xs text-gray-600">
-                      <span className="flex items-center gap-1"><UserCog size={14}/> {order.masterName}</span>
-                      <span className="flex items-center gap-1"><History size={14}/> {order.createdAt?.toDate().toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 min-w-[280px]">
-                    <div className={`p-5 rounded-2xl border-2 text-center ${isFinished ? 'border-emerald-500/30 text-emerald-500' : 'border-yellow-500/30 text-yellow-500'}`}>
-                      <p className="text-[10px] font-black opacity-60">目前進度階段</p>
-                      <p className="text-xl font-black">{order.status}</p>
-                    </div>
-                    {!isFinished && (
-                      <button disabled={!canAction} onClick={() => nextStep(order)} className={`w-full py-5 rounded-2xl font-black flex items-center justify-center gap-3 ${canAction ? 'bg-white text-black hover:bg-yellow-500' : 'bg-gray-900 text-gray-700 cursor-not-allowed'}`}>
-                        {canAction ? '確認進入下一階段' : `等待 ${currentStep.role} 處理`}
-                        <ChevronRight size={20} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                try {
+                    await updateDoc(orderRef, {
+                        currentStepIndex: nextIndex,
+                        status: nextStatus,
+                        updatedAt: serverTimestamp()
+                    });
+                    syncToGoogleSheets({ ...order, status: nextStatus });
+                } catch (err) {
+                    console.error("更新步驟失敗:", err);
+                }
+            }
+        };
+
+        // --- 初始化 Auth 與 資料監聽 ---
+        const init = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("身份驗證失敗:", err);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                currentUser = user;
+                if (user) {
+                    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
+                    onSnapshot(q, (snapshot) => {
+                        orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                                         .sort((a, b) => {
+                                             const timeA = a.updatedAt?.seconds || 0;
+                                             const timeB = b.updatedAt?.seconds || 0;
+                                             return timeB - timeA;
+                                         });
+                        render();
+                    }, (err) => {
+                        console.error("資料監聽失敗:", err);
+                    });
+                }
+            });
+            render();
+        };
+
+        window.onload = init;
+    </script>
+</head>
+<body class="bg-black antialiased">
+    <div id="app">
+        <!-- 系統初始化 Loading -->
+        <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center space-y-4">
+            <div class="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+            <div class="text-yellow-500 font-bold tracking-widest">系統初始化中...</div>
         </div>
-      </main>
     </div>
-  );
-}
-
-function RoleButton({ icon, title, desc, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full bg-[#222] border-2 border-gray-800 p-6 rounded-[2rem] flex items-center gap-6 group hover:border-yellow-500/50 transition-all">
-      <div className="bg-black p-4 rounded-2xl shadow-xl">{icon}</div>
-      <div className="text-left">
-        <h4 className="text-xl font-black group-hover:text-yellow-500 transition-colors">{title}</h4>
-        <p className="text-[10px] text-gray-500 font-bold uppercase">{desc}</p>
-      </div>
-    </button>
-  );
-}
+</body>
+</html>
