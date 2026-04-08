@@ -13,13 +13,12 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- 配置區 ---
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // --- 配置與全局變數 ---
+        let firebaseApp, auth, db;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'logistic-track-system';
-        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; // 填入 Google Apps Script 網址
+        
+        // 請在此填入您的 Google Apps Script 網址
+        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
 
         const FLOWS = {
             'CNC 二工加工': [
@@ -48,17 +47,13 @@
         const MASTER_LIST = ["何師傅", "阿芬", "陳先生", "張經理"];
 
         // 應用程式狀態
-        let currentUser = null;
+        let user = null;
         let currentView = 'login';
         let orders = [];
         let items = [{ id: Date.now(), name: '', qty: '', note: '' }];
+        let initialized = false;
 
-        // 初始化圖標函式 - 使用全域 lucide 物件
-        const refreshIcons = () => {
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
-        };
+        const refreshIcons = () => { if (window.lucide) window.lucide.createIcons(); };
 
         // --- 同步至 Google 試算表 ---
         async function syncToGoogleSheets(orderData) {
@@ -67,8 +62,7 @@
                 const itemsSummary = orderData.items?.length > 0
                     ? orderData.items.map(i => `${i.name}(${i.qty}) ${i.note ? `[${i.note}]` : ''}`).join(', ')
                     : '無明細';
-
-                const payload = { ...orderData, itemsSummary };
+                const payload = { ...orderData, itemsSummary, timestamp: new Date().toISOString() };
                 await fetch(SHEET_API_URL, {
                     method: 'POST',
                     mode: 'no-cors',
@@ -82,6 +76,15 @@
             const root = document.getElementById('app');
             if (!root) return;
 
+            if (!initialized) {
+                root.innerHTML = `
+                <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center space-y-4">
+                    <div class="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div class="text-yellow-500 font-bold tracking-widest">系統初始化中...</div>
+                </div>`;
+                return;
+            }
+
             if (currentView === 'login') {
                 root.innerHTML = `
                 <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white">
@@ -89,58 +92,38 @@
                         <i data-lucide="truck" class="w-12 h-12 text-neutral-900"></i>
                     </div>
                     <h1 class="text-4xl font-black mb-2 tracking-tighter">何鑫實業 / 薪昌</h1>
-                    <p class="text-yellow-500 font-bold mb-12 tracking-[0.3em] text-sm">載運追蹤管理系統 v2.0</p>
+                    <p class="text-yellow-500 font-bold mb-12 tracking-[0.3em] text-sm">載運追蹤管理系統</p>
                     <div class="w-full max-w-sm space-y-4">
-                        <button onclick="window.setView('factory')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
-                            <div class="flex items-center space-x-4">
-                                <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400"><i data-lucide="factory"></i></div>
-                                <span class="text-lg font-bold">廠務人員</span>
-                            </div>
-                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
-                        </button>
-                        <button onclick="window.setView('purchase')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
-                            <div class="flex items-center space-x-4">
-                                <div class="p-3 rounded-xl bg-purple-500/10 text-purple-400"><i data-lucide="package"></i></div>
-                                <span class="text-lg font-bold">採購人員</span>
-                            </div>
-                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
-                        </button>
-                        <button onclick="window.setView('admin')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
-                            <div class="flex items-center space-x-4">
-                                <div class="p-3 rounded-xl bg-orange-500/10 text-orange-400"><i data-lucide="settings"></i></div>
-                                <span class="text-lg font-bold">系統管理員</span>
-                            </div>
-                            <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
-                        </button>
+                        ${['factory', 'purchase', 'admin'].map(role => `
+                            <button onclick="window.setView('${role}')" class="w-full flex items-center justify-between p-6 bg-neutral-900 border border-neutral-800 hover:border-yellow-500 rounded-2xl group transition-all text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="p-3 rounded-xl bg-neutral-800 text-yellow-500">
+                                        <i data-lucide="${role === 'factory' ? 'factory' : role === 'purchase' ? 'package' : 'settings'}"></i>
+                                    </div>
+                                    <span class="text-lg font-bold">${role === 'factory' ? '廠務人員' : role === 'purchase' ? '採購人員' : '管理員'}</span>
+                                </div>
+                                <i data-lucide="chevron-right" class="text-neutral-700 group-hover:text-yellow-500 group-hover:translate-x-1"></i>
+                            </button>
+                        `).join('')}
                     </div>
                 </div>`;
             } else {
                 root.innerHTML = `
                 <div class="min-h-screen bg-black text-gray-200 pb-20">
-                    <header class="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-xl sticky top-0 z-50">
-                        <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-                            <div class="flex items-center space-x-4">
-                                <div class="bg-yellow-500 p-2 rounded-lg"><i data-lucide="truck" class="text-black"></i></div>
-                                <div>
-                                    <p class="text-[10px] text-yellow-500 font-black tracking-widest uppercase">Management</p>
-                                    <h1 class="text-xl font-black tracking-tight">載運單據中心</h1>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <span class="text-xs bg-neutral-800 px-3 py-1 rounded-full text-neutral-400 border border-neutral-700">身分：${currentView}</span>
-                                <button onclick="window.setView('login')" class="p-2.5 bg-neutral-900 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white">
-                                    <i data-lucide="log-out" class="w-[18px] h-[18px]"></i>
-                                </button>
-                            </div>
+                    <header class="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-xl sticky top-0 z-50 px-6 h-20 flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="bg-yellow-500 p-2 rounded-lg"><i data-lucide="truck" class="text-black"></i></div>
+                            <h1 class="text-xl font-black">載運單據中心</h1>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xs bg-neutral-800 px-3 py-1 rounded-full text-neutral-400">身分：${currentView}</span>
+                            <button onclick="window.setView('login')" class="p-2 bg-neutral-900 rounded-xl text-neutral-400 hover:text-white"><i data-lucide="log-out" class="w-5 h-5"></i></button>
                         </div>
                     </header>
-                    <main class="max-w-4xl mx-auto p-4 md:p-6 space-y-10">
+                    <main class="max-w-4xl mx-auto p-6 space-y-10">
                         ${(currentView === 'factory' || currentView === 'admin') ? `
-                        <section class="bg-neutral-900 border border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
-                            <div class="flex items-center space-x-3 mb-8">
-                                <div class="w-1.5 h-6 bg-yellow-500 rounded-full"></div>
-                                <h2 class="text-2xl font-black text-white">建立新載運任務</h2>
-                            </div>
+                        <section class="bg-neutral-900 border border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
+                            <h2 class="text-2xl font-black text-white mb-8 flex items-center"><span class="w-1.5 h-6 bg-yellow-500 rounded-full mr-3"></span>建立任務</h2>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-white">
                                 <div class="space-y-2">
                                     <label class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">載運類別</label>
@@ -159,36 +142,29 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="bg-black/50 rounded-3xl p-6 mb-8 border border-neutral-800 text-white">
+                            <div class="bg-black/50 rounded-3xl p-6 mb-8 border border-neutral-800">
                                 <div class="flex items-center justify-between mb-6">
-                                    <div class="flex items-center space-x-2">
-                                        <i data-lucide="package" class="text-yellow-500 w-4 h-4"></i>
-                                        <span class="text-sm font-bold">清單明細</span>
-                                    </div>
-                                    <button onclick="window.addItem()" class="text-xs bg-yellow-500 text-black font-black px-4 py-2 rounded-xl flex items-center">
-                                        <i data-lucide="plus" class="w-3 h-3 mr-1"></i> 新增項目
-                                    </button>
+                                    <span class="text-sm font-bold text-white">清單明細</span>
+                                    <button onclick="window.addItem()" class="text-xs bg-yellow-500 text-black font-black px-4 py-2 rounded-xl">新增項目</button>
                                 </div>
                                 <div id="itemsContainer" class="space-y-3">
                                     ${items.map((item, idx) => `
-                                        <div class="flex flex-col md:flex-row gap-2 items-center">
-                                            <input placeholder="物件名稱" class="flex-grow w-full bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm focus:border-yellow-500 outline-none" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
-                                            <div class="flex w-full md:w-auto gap-2">
-                                                <input placeholder="數量" class="w-20 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm text-center" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
-                                                <input placeholder="備註" class="flex-grow md:w-40 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm" onchange="window.updateItem(${idx}, 'note', this.value)" value="${item.note}" />
-                                                <button onclick="window.removeItem(${item.id})" class="p-3 text-neutral-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                                            </div>
+                                        <div class="flex flex-col md:flex-row gap-2">
+                                            <input placeholder="物件名稱" class="flex-grow bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm text-white" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
+                                            <input placeholder="數量" class="w-20 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm text-white" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
+                                            <input placeholder="備註" class="w-32 bg-neutral-800 border border-neutral-700 rounded-xl p-3 text-sm text-white" onchange="window.updateItem(${idx}, 'note', this.value)" value="${item.note}" />
+                                            <button onclick="window.removeItem(${item.id})" class="p-3 text-neutral-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                         </div>
                                     `).join('')}
                                 </div>
                             </div>
-                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl hover:bg-yellow-400 transition-all flex items-center justify-center">
-                                確認發布並同步至雲端 <i data-lucide="arrow-right" class="ml-2"></i>
+                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-5 rounded-2xl hover:bg-yellow-400 flex items-center justify-center">
+                                發布任務 <i data-lucide="arrow-right" class="ml-2"></i>
                             </button>
                         </section>` : ''}
                         
-                        <div class="space-y-8">
-                            <h3 class="text-xl font-black text-white px-2">即時單據動態</h3>
+                        <div class="space-y-6">
+                            <h3 class="text-xl font-black text-white">即時看板</h3>
                             <div id="ordersList" class="grid gap-6"></div>
                         </div>
                     </main>
@@ -202,72 +178,51 @@
             const container = document.getElementById('ordersList');
             if (!container) return;
             if (orders.length === 0) {
-                container.innerHTML = `
-                <div class="text-center py-20 border-2 border-dashed border-neutral-900 rounded-[2.5rem] text-neutral-600">
-                    <i data-lucide="package" class="mx-auto mb-4 opacity-20 w-12 h-12"></i>
-                    <p>目前尚無載運單據</p>
-                </div>`;
-            } else {
-                container.innerHTML = orders.map(order => {
-                    const flow = FLOWS[order.type] || [];
-                    const isFinished = order.currentStepIndex === flow.length - 1;
-                    const canProgress = (currentView === flow[order.currentStepIndex]?.role) || currentView === 'admin';
-                    const progress = Math.round(((order.currentStepIndex + 1) / flow.length) * 100);
-
-                    return `
-                    <div class="bg-neutral-900 border border-neutral-800 rounded-[2rem] p-8 group hover:border-neutral-600 transition-all">
-                        <div class="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
-                            <div>
-                                <span class="bg-yellow-500/10 text-yellow-500 text-[10px] px-3 py-1 rounded-full uppercase font-black border border-yellow-500/20">${order.type}</span>
-                                <h2 class="text-3xl font-black text-white mt-3 tracking-tighter">${order.customerName}</h2>
-                            </div>
-                            <div class="bg-black/50 p-4 rounded-2xl border border-neutral-800 min-w-[160px] text-center">
-                                <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-1">任務階段</p>
-                                <p class="text-lg font-black ${isFinished ? 'text-green-400' : 'text-yellow-500'}">${order.status}</p>
-                            </div>
-                        </div>
-                        <div class="mb-8 space-y-2">
-                            <div class="flex justify-between text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                                <span>進度比例</span><span>${progress}%</span>
-                            </div>
-                            <div class="h-2 bg-neutral-800 rounded-full overflow-hidden">
-                                <div class="h-full ${isFinished ? 'bg-green-500' : 'bg-yellow-500'} transition-all duration-1000" style="width: ${progress}%"></div>
-                            </div>
-                        </div>
-                        <div class="grid md:grid-cols-2 gap-8 items-end">
-                            <div class="space-y-4">
-                                <div class="flex items-center text-sm font-bold text-neutral-300 bg-neutral-800/50 w-fit px-4 py-2 rounded-xl border border-neutral-700">
-                                    <i data-lucide="user" class="mr-2 text-yellow-500 w-4 h-4"></i>負責師傅: <span class="ml-2 text-white">${order.masterName}</span>
-                                </div>
-                                <div class="space-y-2 text-white">
-                                    <p class="text-[10px] font-bold text-neutral-500 uppercase">物件明細</p>
-                                    <div class="bg-black/40 p-4 rounded-2xl border border-neutral-800/50">
-                                        ${order.items?.map(it => `
-                                            <div class="flex justify-between items-center py-2 text-xs border-b border-neutral-800 last:border-0">
-                                                <span class="font-bold">${it.name} <span class="text-yellow-500 ml-1">× ${it.qty}</span></span>
-                                                <span class="text-[10px] text-neutral-500 italic">${it.note || ''}</span>
-                                            </div>
-                                        `).join('') || '無'}
-                                    </div>
-                                </div>
-                            </div>
-                            <div>
-                                ${canProgress && !isFinished ? `
-                                    <button onclick="window.nextStep('${order.id}')" class="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-yellow-500 transition-all flex items-center justify-center group">
-                                        下一步：${flow[order.currentStepIndex + 1]?.label || '完成'} 
-                                        <i data-lucide="arrow-right" class="ml-2 group-hover:translate-x-2 transition-all w-5 h-5"></i>
-                                    </button>
-                                ` : `
-                                    <div class="w-full py-4 rounded-2xl border-2 border-dashed border-neutral-800 text-neutral-600 text-center font-bold uppercase tracking-widest text-xs">
-                                        ${isFinished ? '✓ 任務已全數完成' : '等待他人簽核中'}
-                                    </div>
-                                `}
-                            </div>
-                        </div>
-                    </div>`;
-                }).join('');
-                refreshIcons();
+                container.innerHTML = `<div class="text-center py-20 border-2 border-dashed border-neutral-900 rounded-[2rem] text-neutral-600 font-bold uppercase tracking-widest text-xs">尚無載運單據</div>`;
+                return;
             }
+            container.innerHTML = orders.map(order => {
+                const flow = FLOWS[order.type] || [];
+                const isFinished = order.currentStepIndex === flow.length - 1;
+                const currentStepRole = flow[order.currentStepIndex]?.role;
+                const canProgress = (currentView === currentStepRole) || currentView === 'admin';
+                const progress = Math.round(((order.currentStepIndex + 1) / flow.length) * 100);
+
+                return `
+                <div class="bg-neutral-900 border border-neutral-800 rounded-[2rem] p-8">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <span class="text-[10px] text-yellow-500 font-black border border-yellow-500/30 px-2 py-0.5 rounded uppercase">${order.type}</span>
+                            <h2 class="text-2xl font-black text-white mt-2">${order.customerName}</h2>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] text-neutral-500 font-bold uppercase mb-1">目前狀態</p>
+                            <p class="font-black ${isFinished ? 'text-green-400' : 'text-yellow-500'}">${order.status}</p>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <div class="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                            <div class="h-full ${isFinished ? 'bg-green-500' : 'bg-yellow-500'}" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 items-end">
+                        <div class="text-sm space-y-1">
+                            <p class="text-neutral-500 text-xs">負責人: <span class="text-neutral-200 font-bold">${order.masterName}</span></p>
+                            <div class="bg-black/30 p-3 rounded-xl border border-neutral-800 text-[11px]">
+                                ${order.items?.map(it => `<div>• ${it.name} (${it.qty}) <span class="text-neutral-600">${it.note || ''}</span></div>`).join('') || '無項目'}
+                            </div>
+                        </div>
+                        <div>
+                            ${canProgress && !isFinished ? `
+                                <button onclick="window.nextStep('${order.id}')" class="w-full bg-white text-black font-black py-3 rounded-xl hover:bg-yellow-500 flex items-center justify-center text-sm">
+                                    確認下一步：${flow[order.currentStepIndex + 1]?.label} <i data-lucide="arrow-right" class="ml-2 w-4 h-4"></i>
+                                </button>
+                            ` : `<div class="w-full py-3 rounded-xl border border-neutral-800 text-neutral-600 text-center text-[10px] font-bold uppercase">${isFinished ? '✓ 任務結束' : '等待簽核中'}</div>`}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            refreshIcons();
         };
 
         // --- 控制邏輯 ---
@@ -277,96 +232,88 @@
         window.removeItem = (id) => { if (items.length > 1) { items = items.filter(i => i.id !== id); render(); } };
 
         window.handleCreate = async () => {
+            if (!user || !db) return alert("系統尚未連線，請稍後");
             const customerName = document.getElementById('newCustomerName')?.value;
             const type = document.getElementById('newOrderType')?.value;
             const masterName = document.getElementById('newMasterName')?.value;
-            if (!customerName || !customerName.trim()) return alert("請輸入客戶名稱");
+            if (!customerName?.trim()) return alert("請輸入客戶名稱");
+
+            const validItems = items.filter(i => i.name.trim() !== "");
+            if (validItems.length === 0) return alert("請至少新增一個項目");
 
             const newOrder = {
                 type, customerName, masterName,
-                items: items.filter(i => i.name.trim() !== ""),
+                items: validItems,
                 currentStepIndex: 0,
                 status: FLOWS[type][0].label,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-                createdBy: auth.currentUser?.uid || 'anonymous'
+                createdBy: user.uid
             };
 
             try {
                 const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder);
-                syncToGoogleSheets({ id: docRef.id, ...newOrder, status: "(新單) " + newOrder.status });
-                
-                // 重置表單
+                syncToGoogleSheets({ id: docRef.id, ...newOrder });
                 items = [{ id: Date.now(), name: '', qty: '', note: '' }];
                 render();
-            } catch (err) {
-                console.error("建立訂單失敗:", err);
-            }
+            } catch (err) { console.error(err); alert("儲存失敗，請檢查網路或權限"); }
         };
 
         window.nextStep = async (orderId) => {
+            if (!user) return;
             const order = orders.find(o => o.id === orderId);
             const flow = FLOWS[order.type];
             if (order.currentStepIndex < flow.length - 1) {
                 const nextIndex = order.currentStepIndex + 1;
                 const nextStatus = flow[nextIndex].label;
-                const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-
                 try {
-                    await updateDoc(orderRef, {
-                        currentStepIndex: nextIndex,
-                        status: nextStatus,
-                        updatedAt: serverTimestamp()
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId), {
+                        currentStepIndex: nextIndex, status: nextStatus, updatedAt: serverTimestamp()
                     });
                     syncToGoogleSheets({ ...order, status: nextStatus });
-                } catch (err) {
-                    console.error("更新步驟失敗:", err);
-                }
+                } catch (err) { console.error(err); }
             }
         };
 
-        // --- 初始化 Auth 與 資料監聽 ---
-        const init = async () => {
+        // --- 初始化流程 ---
+        const startApp = async () => {
             try {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                firebaseApp = initializeApp(firebaseConfig);
+                auth = getAuth(firebaseApp);
+                db = getFirestore(firebaseApp);
+
+                // 登入流程
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
-            } catch (err) {
-                console.error("身份驗證失敗:", err);
-            }
 
-            onAuthStateChanged(auth, (user) => {
-                currentUser = user;
-                if (user) {
-                    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
-                    onSnapshot(q, (snapshot) => {
-                        orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-                                         .sort((a, b) => {
-                                             const timeA = a.updatedAt?.seconds || 0;
-                                             const timeB = b.updatedAt?.seconds || 0;
-                                             return timeB - timeA;
-                                         });
-                        render();
-                    }, (err) => {
-                        console.error("資料監聽失敗:", err);
-                    });
-                }
-            });
-            render();
+                onAuthStateChanged(auth, (u) => {
+                    user = u;
+                    initialized = true;
+                    if (u) {
+                        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
+                        onSnapshot(q, (snap) => {
+                            orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                         .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+                            render();
+                        }, (err) => console.error("資料監聽失敗:", err));
+                    }
+                    render();
+                });
+            } catch (err) {
+                console.error("Firebase 初始化失敗:", err);
+                initialized = true; 
+                render();
+            }
         };
 
-        window.onload = init;
+        window.onload = startApp;
     </script>
 </head>
 <body class="bg-black antialiased">
-    <div id="app">
-        <!-- 系統初始化 Loading -->
-        <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center space-y-4">
-            <div class="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
-            <div class="text-yellow-500 font-bold tracking-widest">系統初始化中...</div>
-        </div>
-    </div>
+    <div id="app"></div>
 </body>
 </html>
