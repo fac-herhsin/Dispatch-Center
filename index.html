@@ -3,512 +3,506 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>何鑫/薪昌載運系統</title>
+    <title>何鑫實業/薪昌載運追蹤系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap');
-        body { 
-            font-family: 'Noto Sans TC', sans-serif; 
-            background-color: #000; 
-            margin: 0;
-            padding: 0;
+        :root {
+            --brand-yellow: #fbbf24;
+            --brand-dark: #1a1a1a;
+            --brand-gray: #2d2d2d;
+        }
+        body { background-color: var(--brand-dark); color: #e5e5e5; }
+        .bg-brand-yellow { background-color: var(--brand-yellow); }
+        .text-brand-yellow { color: var(--brand-yellow); }
+        .border-brand-yellow { border-color: var(--brand-yellow); }
+        
+        .status-badge { @apply px-2 py-1 rounded text-xs font-bold; }
+        .status-completed { background-color: #10b981; color: white; }
+        .status-processing { background-color: var(--brand-yellow); color: var(--brand-dark); }
+        
+        .card-dark { background-color: var(--brand-gray); border: 1px solid #3f3f46; }
+        .input-dark { 
+            background-color: #121212; 
+            border: 1px solid #3f3f46; 
+            @apply rounded-md p-2 w-full text-white focus:ring-2 focus:ring-yellow-500 focus:outline-none placeholder-gray-600;
         }
         
-        .login-card {
-            background-color: #1a1a1a;
-            border-radius: 50px;
-            padding: 60px 40px;
-            width: 100%;
-            max-width: 440px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        
-        .login-btn {
-            background-color: #2a2a2a;
-            color: #ffffff;
-            font-weight: 700;
-            transition: all 0.2s ease;
-            border: none;
-            width: 100%;
-            padding: 20px 0;
-            border-radius: 20px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            margin-bottom: 16px;
-        }
-        
-        .login-btn:hover { 
-            background-color: #333; 
-            transform: translateY(-2px);
-        }
-        
-        .admin-btn {
-            background-color: #ffcc00;
-            color: #000000;
-            font-weight: 900;
-            width: 100%;
-            padding: 20px 0;
-            border-radius: 20px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 10px 20px rgba(255, 204, 0, 0.2);
-            transition: all 0.2s ease;
-            margin-top: 8px;
+        .login-overlay {
+            background: radial-gradient(circle at center, #2d2d2d 0%, #1a1a1a 100%);
         }
 
-        .icon-box {
-            background-color: #ffcc00;
-            width: 100px;
-            height: 100px;
-            border-radius: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 30px auto;
-        }
-
-        .custom-scroll::-webkit-scrollbar { width: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
-        
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .toast-item { animation: slideIn 0.3s ease-out forwards; }
-
-        /* 載入中遮罩 */
-        #loading-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
+        /* 隱藏捲軸 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="h-screen overflow-hidden text-slate-200">
+<body class="min-h-screen pb-20 font-sans">
 
-    <!-- 載入中動畫 -->
-    <div id="loading-overlay">
-        <div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-yellow-400 font-bold animate-pulse">正在同步雲端試算表...</p>
-    </div>
-
-    <!-- 通知中心 -->
-    <div id="toast-container" class="fixed top-6 right-6 z-[300] flex flex-col gap-3 w-72 pointer-events-none"></div>
-
-    <!-- 登入頁面 -->
-    <div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black">
-        <div class="login-card text-center">
-            <div class="icon-box mb-8">
-                <i data-lucide="truck" class="w-14 h-14 text-black"></i>
+    <!-- 登入選擇畫面 -->
+    <div id="loginScreen" class="fixed inset-0 z-[100] login-overlay flex flex-col items-center justify-center p-6">
+        <div class="text-center mb-10">
+            <div class="inline-block p-4 bg-brand-yellow rounded-2xl mb-4 shadow-[0_0_30px_rgba(251,191,36,0.3)]">
+                <i data-lucide="shield-check" class="w-12 h-12 text-black"></i>
             </div>
-            <h1 class="text-4xl font-black text-white tracking-tighter mb-2">何鑫 / 薪昌</h1>
-            <p class="text-[#ffcc00] font-bold text-sm tracking-[0.4em] uppercase mb-12">載運調度管理系統</p>
-            
-            <div class="flex flex-col">
-                <button onclick="window.login('procure')" class="login-btn">採購/業務部</button>
-                <button onclick="window.login('factory')" class="login-btn">廠務調度</button>
-                <button onclick="window.login('warehouse')" class="login-btn">倉管部</button>
-                <button onclick="window.login('admin')" class="admin-btn">系統管理員</button>
-            </div>
+            <h1 class="text-3xl font-black text-white tracking-tight">何鑫實業 / 薪昌</h1>
+            <p class="text-brand-yellow font-bold tracking-widest mt-1">載運追蹤系統</p>
         </div>
+        
+        <div class="w-full max-w-sm space-y-4">
+            <p class="text-center text-gray-400 text-sm mb-6">請選擇您的登入身分</p>
+            
+            <button onclick="loginAs('factory')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-blue-500/10 rounded-lg text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition">
+                        <i data-lucide="factory"></i>
+                    </div>
+                    <span class="text-lg font-bold">廠務人員</span>
+                </div>
+                <i data-lucide="chevron-right" class="text-zinc-600"></i>
+            </button>
+
+            <button onclick="loginAs('purchasing')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-purple-500/10 rounded-lg text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition">
+                        <i data-lucide="shopping-cart"></i>
+                    </div>
+                    <span class="text-lg font-bold">採購人員</span>
+                </div>
+                <i data-lucide="chevron-right" class="text-zinc-600"></i>
+            </button>
+
+            <button onclick="loginAs('admin')" class="w-full flex items-center justify-between p-5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl transition-all group">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-amber-500/10 rounded-lg text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition">
+                        <i data-lucide="user-cog"></i>
+                    </div>
+                    <span class="text-lg font-bold">系統管理員</span>
+                </div>
+                <i data-lucide="chevron-right" class="text-zinc-600"></i>
+            </button>
+        </div>
+        
+        <p class="mt-12 text-zinc-600 text-xs">© 2026 何鑫實業 版權所有</p>
     </div>
 
-    <!-- 主頁面 -->
-    <div id="main-app" class="flex flex-col h-screen hidden">
-        <header class="bg-black border-b border-zinc-800 px-8 py-4 flex justify-between items-center z-50">
-            <div class="flex items-center space-x-6">
-                <div class="flex flex-col">
-                    <h2 id="page-title" class="text-xl font-black text-white tracking-tight">載運調度管理系統</h2>
-                    <div class="flex items-center space-x-2">
-                        <span id="user-role-badge" class="text-[10px] bg-yellow-400 text-black px-2 py-0.5 rounded font-black uppercase tracking-widest">角色</span>
-                        <span class="text-[10px] text-zinc-600 font-bold uppercase" id="current-time-display"></span>
-                    </div>
-                </div>
+    <!-- 主程式內容 -->
+    <div id="mainContent" class="hidden">
+        <!-- 頂部導覽列 -->
+        <nav class="bg-black border-b border-zinc-800 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow-2xl">
+            <div class="flex flex-col">
+                <span class="text-[10px] text-brand-yellow font-black tracking-wider">何鑫實業 / 薪昌</span>
+                <h1 class="text-lg font-black flex items-center gap-2">
+                    載運追蹤系統
+                </h1>
             </div>
-            
-            <div class="flex items-center space-x-4">
-                <button id="sync-btn" onclick="window.manualSync()" class="flex items-center space-x-2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-bold text-zinc-300 hover:bg-zinc-800">
-                    <i id="sync-icon" data-lucide="refresh-cw" class="w-3 h-3"></i>
-                    <span>同步雲端</span>
-                </button>
-                <button id="main-action-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center hidden" onclick="window.openModal()">
-                    <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新增單據
-                </button>
-                <button onclick="window.logout()" class="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-500 transition-all">
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <p id="displayUserRole" class="text-xs font-bold text-brand-yellow"></p>
+                    <p class="text-[10px] text-zinc-500">線上運作中</p>
+                </div>
+                <button onclick="logout()" class="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
                 </button>
             </div>
-        </header>
+        </nav>
 
-        <main class="flex-1 overflow-y-auto custom-scroll p-6 bg-[#050505] space-y-8">
-            <section class="flex flex-col min-w-0">
-<div class="flex items-center justify-between mb-4">
-    <h3 class="text-lg font-black text-white flex items-center">
-        <span class="w-1.5 h-6 bg-yellow-400 rounded-full mr-3"></span>
-        當前調度清單 <span id="active-count" class="ml-2 text-yellow-400 opacity-60">0</span>
-    </h3>
-    <button onclick="window.printDispatch()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-black transition-all flex items-center gap-2 text-white">
-        <i data-lucide="printer" class="w-4 h-4"></i> 批量列印配送單
-    </button>
-</div>
-                <div class="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] overflow-hidden flex flex-col">
-                    <table class="w-full text-left border-separate border-spacing-0">
-                        <thead class="bg-zinc-900 border-b border-zinc-800">
-<tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-<th class="px-6 py-4 w-10">
-    <input type="checkbox" id="select-all-checkbox" class="w-5 h-5 cursor-pointer accent-yellow-400" onclick="window.toggleAll(this)">
-</th> 
-<th class="px-6 py-4">單號/類型</th>
-    <th class="px-6 py-4">狀態</th>
-    <th class="px-6 py-4">目的地</th>
-    <th class="px-6 py-4">內容與備註</th>
-    <th class="px-6 py-4">操作</th>
-</tr>
-                        </thead>
-                        <tbody id="active-body" class="divide-y divide-zinc-800/50"></tbody>
-                    </table>
+        <div class="max-w-4xl mx-auto p-4">
+            <!-- 快速新增區 -->
+            <section id="addSection" class="mb-8 card-dark p-6 rounded-2xl shadow-2xl border-t-4 border-t-brand-yellow">
+                <h2 class="text-lg font-black mb-4 flex items-center gap-2 text-white">
+                    <i data-lucide="plus-square" class="text-brand-yellow"></i> 建立新單據
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-[11px] font-black text-zinc-500 mb-1 tracking-widest">載運類別</label>
+                        <select id="itemCategory" class="input-dark text-sm">
+                            <option value="CNC">CNC 二工加工</option>
+                            <option value="CUSTOMER">客戶送貨行程</option>
+                            <option value="GALVANIZING">鍍鋅外包處理</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-black text-zinc-500 mb-1 tracking-widest">客戶名稱</label>
+                        <input type="text" id="customerName" placeholder="請輸入客戶名稱" class="input-dark text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-black text-zinc-500 mb-1 tracking-widest">負責師傅 / 廠商</label>
+                        <div class="flex gap-1">
+                            <select id="carrierSelect" class="input-dark text-sm flex-1">
+                                <!-- 師傅選項將動態載入 -->
+                            </select>
+                            <button onclick="openCarrierModal()" class="bg-zinc-800 text-brand-yellow px-2 rounded-md border border-zinc-700 hover:bg-zinc-700">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- 物件明細區 -->
+                <div class="bg-black/40 p-4 rounded-xl mb-4 border border-zinc-800">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xs font-black text-zinc-400 tracking-widest">物件清單明細</h3>
+                        <button onclick="addItemRow()" class="text-[10px] bg-zinc-800 text-brand-yellow px-3 py-1.5 rounded-lg border border-zinc-700 hover:bg-zinc-700 transition">
+                            + 新增物件
+                        </button>
+                    </div>
+                    <div id="itemsContainer" class="space-y-3">
+                        <div class="item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative">
+                            <div class="md:col-span-4"><input type="text" placeholder="物件名稱" class="item-name input-dark text-xs"></div>
+                            <div class="md:col-span-2"><input type="number" placeholder="數量" class="item-qty input-dark text-xs"></div>
+                            <div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div>
+                            <div class="md:col-span-4"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="addNewShipment()" class="w-full bg-brand-yellow text-black py-3 rounded-xl font-black hover:brightness-110 transition shadow-[0_4px_20px_rgba(251,191,36,0.2)]">
+                    發布載運單據
+                </button>
             </section>
 
-            <section class="flex flex-col min-w-0 opacity-80">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-black text-zinc-400 flex items-center">
-                        <span class="w-1.5 h-6 bg-zinc-700 rounded-full mr-3"></span>
-                        歷史結案紀錄
-                    </h3>
-                </div>
-                <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-[2rem] overflow-hidden flex flex-col">
-                    <table class="w-full text-left border-separate border-spacing-0">
-                        <thead class="bg-zinc-900/50">
-                            <tr class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">
-                                <th class="px-6 py-4">單號</th>
-                                <th class="px-6 py-4">類型</th>
-                                <th class="px-6 py-4">目的地</th>
-                                <th class="px-6 py-4">完成時間</th>
-                                <th class="px-6 py-4">內容</th>
-                                <th class="px-6 py-4">管理</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-body" class="divide-y divide-zinc-800/30"></tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- 彈窗: 新增單據 -->
-<div id="modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm hidden flex items-center justify-center z-[100] p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl flex flex-col max-h-[90vh]">
-        <h3 class="text-2xl font-black text-white mb-6">新增調度單</h3>
-        
-        <div class="space-y-4 overflow-y-auto custom-scroll pr-2 flex-1">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">單據類型</label>
-                    <select id="input-type" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                        <option value="加工件">加工件</option>
-                        <option value="銷售">銷售</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-zinc-500 mb-1 block">目的地</label>
-                    <input type="text" id="input-vendor" placeholder="工廠或客戶名稱" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none">
-                </div>
+            <!-- 狀態過濾 -->
+            <div class="flex gap-3 mb-6 overflow-x-auto pb-2 no-scrollbar">
+                <button onclick="filterTable('all')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">全部單據</button>
+                <button onclick="filterTable('CNC')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">CNC加工</button>
+                <button onclick="filterTable('CUSTOMER')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">客戶送貨</button>
+                <button onclick="filterTable('GALVANIZING')" class="px-6 py-2 bg-zinc-800 rounded-xl text-xs font-bold border border-zinc-700 hover:border-brand-yellow transition">鍍鋅處理</button>
             </div>
 
-            <div id="item-list" class="space-y-3">
-                <label class="text-[10px] font-black text-zinc-500 block">品項明細</label>
-                <div class="item-entry grid grid-cols-12 gap-2">
-                    <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
-                    <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
-                    <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
-                </div>
-            </div>
-            
-            <button onclick="window.addItemRow()" class="w-full py-2 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-xs font-bold hover:bg-zinc-800 transition-all">
-                + 新增更多品項
-            </button>
-
-            <div>
-                <label class="text-[10px] font-black text-zinc-500 mb-1 block">備註</label>
-                <textarea id="input-note" rows="2" class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none resize-none" placeholder="輸入額外說明..."></textarea>
-            </div>
-        </div>
-
-        <div class="mt-8 flex gap-3">
-            <button onclick="window.closeModal()" class="flex-1 py-4 text-zinc-500 font-bold">取消</button>
-            <button onclick="window.saveData()" class="flex-1 py-4 bg-yellow-400 text-black font-black rounded-xl">發佈單據</button>
+            <!-- 列表區 -->
+            <div id="shipmentList" class="space-y-6"></div>
         </div>
     </div>
-</div>
 
-<script>
-    // 1. 設定與全域變數
-    const gasWebappUrl = "https://script.google.com/macros/s/AKfycbx2i6bAtOgzwsxoTRYov93Ao0TWbIekzzNoG2INF-lTrpFx27zLMrMPyE8ycgiROK4tJg/exec"; 
-    window.masterData = [];
-    window.currentUserRole = null;
+    <!-- 新增師傅 Modal -->
+    <div id="carrierModal" class="fixed inset-0 z-[200] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="bg-zinc-900 border border-zinc-700 w-full max-w-xs p-6 rounded-2xl shadow-2xl">
+            <h3 class="text-white font-black mb-4 flex items-center gap-2">
+                <i data-lucide="user-plus" class="text-brand-yellow"></i> 新增師傅 / 廠商
+            </h3>
+            <input type="text" id="newCarrierInput" placeholder="輸入名稱 (如: 陳師傅)" class="input-dark mb-4">
+            <div class="flex gap-2">
+                <button onclick="closeCarrierModal()" class="flex-1 py-2 bg-zinc-800 text-zinc-400 rounded-xl font-bold hover:bg-zinc-700">取消</button>
+                <button onclick="saveNewCarrier()" class="flex-1 py-2 bg-brand-yellow text-black rounded-xl font-bold">確認新增</button>
+            </div>
+        </div>
+    </div>
 
-    // 2. 資料同步函式
-    window.manualSync = async () => {
-        const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.display = 'flex';
-        
-        try {
-            const response = await fetch(`${gasWebappUrl}?t=${Date.now()}`);
-            const data = await response.json();
-            window.masterData = data || [];
-            window.renderTables(); // 呼叫渲染
-            window.showToast('雲端資料同步成功', 'success');
-        } catch (e) {
-            console.error('同步出錯:', e);
-            window.showToast('同步失敗，請檢查網路或 GAS 權限', 'danger');
-        } finally {
-            if (loader) loader.style.display = 'none';
-        }
-    };
+    <!-- 提示框 -->
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-brand-yellow text-black font-bold px-8 py-3 rounded-xl shadow-2xl opacity-0 transition-all pointer-events-none z-[210]">
+        操作成功
+    </div>
 
-    // 3. 登入邏輯
-    window.login = async (role) => {
-        window.currentUserRole = role;
-        await window.manualSync(); 
+    <script type="module">
+        let shipments = JSON.parse(localStorage.getItem('shipments')) || [];
+        let carriers = JSON.parse(localStorage.getItem('carriers')) || ['未指定', '阿芬', '何師傅', '委外貨運'];
+        let currentRole = null;
 
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('main-app').classList.remove('hidden');
-        
-        const roles = {'procure':'採購/業務', 'factory':'廠務調度', 'warehouse':'倉管部', 'admin':'系統管理員'};
-        document.getElementById('user-role-badge').innerText = roles[role] || role;
-        
-        const actionBtn = document.getElementById('main-action-btn');
-        if (actionBtn) actionBtn.classList.toggle('hidden', !(role === 'procure' || role === 'admin'));
-
-        window.showToast(`歡迎回來，${roles[role]}`, 'success');
-    };
-
-    // 4. 新增資料 (POST - CREATE)
-    window.saveData = async () => {
-        const loader = document.getElementById('loading-overlay');
-        loader.style.display = 'flex';
-
-        const itemEntries = document.querySelectorAll('.item-entry');
-        const items = Array.from(itemEntries).map(row => ({
-            n: row.querySelector('.item-n').value,
-            q: row.querySelector('.item-q').value || 0,
-            u: row.querySelector('.item-u').value
-        })).filter(i => i.n !== '');
-
-        if (items.length === 0) {
-            alert("請至少填寫一個品項名稱");
-            loader.style.display = 'none';
-            return;
+        function updateIcons() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
         }
 
-        const newRecord = {
-            id: 'HC-' + Date.now().toString().slice(-6),
-            type: document.getElementById('input-type').value,
-            status: '待處理',
-            vendor: document.getElementById('input-vendor').value,
-            items: items,
-            note: document.getElementById('input-note').value,
-            creator: window.currentUserRole
+        const categoryNames = {
+            'CNC': 'CNC 二工',
+            'CUSTOMER': '客戶送貨',
+            'GALVANIZING': '鍍鋅處理'
         };
 
-        try {
-            await fetch(gasWebappUrl, {
-                method: 'POST',
-                mode: 'no-cors', 
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: "CREATE", ...newRecord })
-            });
+        // 初始化
+        window.onload = () => {
+            renderCarrierOptions();
+            updateIcons();
+        };
 
-            setTimeout(async () => {
-                await window.manualSync();
-                window.closeModal();
-                window.showToast('單據已發佈', 'success');
-                // 清空輸入欄位
-                document.getElementById('input-vendor').value = '';
-                document.getElementById('input-note').value = '';
-                document.getElementById('item-list').innerHTML = `
-                    <label class="text-[10px] font-black text-zinc-500 block">品項明細</label>
-                    <div class="item-entry grid grid-cols-12 gap-2">
-                        <input type="text" placeholder="品項名稱" class="col-span-6 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-n">
-                        <input type="number" placeholder="數量" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-q">
-                        <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm outline-none item-u">
-                    </div>`;
-            }, 1000);
+        // 登入功能
+        window.loginAs = (role) => {
+            currentRole = role;
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('displayUserRole').textContent = getRoleName(role);
+            renderList();
+            updateIcons();
+        };
 
-        } catch (e) {
-            console.error(e);
-            window.showToast('發佈失敗', 'danger');
-        } finally {
-            setTimeout(() => { if (loader) loader.style.display = 'none'; }, 1000);
+        window.logout = () => {
+            currentRole = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+            updateIcons();
+        };
+
+        function getRoleName(role) {
+            const names = { factory: '廠務人員', purchasing: '採購人員', admin: '系統管理員' };
+            return names[role];
         }
-    };
 
-    // 5. 更新狀態
-    window.updateStatus = async (id, newStatus) => {
-        const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.display = 'flex';
-        try {
-            await fetch(gasWebappUrl, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: "UPDATE_STATUS", id: id, status: newStatus })
-            });
-            window.showToast(`狀態更新中...`, 'info');
-            setTimeout(async () => {
-                await window.manualSync();
-            }, 1000);
-        } catch (e) {
-            window.showToast('更新失敗', 'danger');
-        }
-    };
+        // 師傅管理
+        window.renderCarrierOptions = () => {
+            const select = document.getElementById('carrierSelect');
+            select.innerHTML = carriers.map(c => `<option value="${c}">${c}</option>`).join('');
+        };
 
-    // 6. 刪除資料
-    window.deleteRecord = async (id) => {
-        if (!confirm(`確定要刪除單據 ${id} 嗎？`)) return;
-        const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.display = 'flex';
-        try {
-            await fetch(gasWebappUrl, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ action: "DELETE", id: id })
-            });
-            window.showToast('刪除請求已送出', 'info');
-            setTimeout(async () => {
-                await window.manualSync();
-            }, 1000);
-        } catch (e) {
-            window.showToast('刪除失敗', 'danger');
-        }
-    };
+        window.openCarrierModal = () => {
+            document.getElementById('carrierModal').classList.remove('hidden');
+            document.getElementById('newCarrierInput').focus();
+        };
 
-    // 7. 介面渲染 (修正版：整理了權限並修復歷史紀錄顯示)
-    window.renderTables = () => {
-        const activeBody = document.getElementById('active-body');
-        const historyBody = document.getElementById('history-body');
-        if (!activeBody || !historyBody) return;
+        window.closeCarrierModal = () => {
+            document.getElementById('carrierModal').classList.add('hidden');
+            document.getElementById('newCarrierInput').value = '';
+        };
 
-        activeBody.innerHTML = '';
-        historyBody.innerHTML = '';
+        window.saveNewCarrier = () => {
+            const name = document.getElementById('newCarrierInput').value.trim();
+            if (name && !carriers.includes(name)) {
+                carriers.push(name);
+                localStorage.setItem('carriers', JSON.stringify(carriers));
+                renderCarrierOptions();
+                document.getElementById('carrierSelect').value = name;
+                closeCarrierModal();
+                showToast('已新增師傅');
+            } else if (carriers.includes(name)) {
+                showToast('名稱已存在');
+            }
+        };
 
-        const activeList = window.masterData.filter(r => r.status !== '已結案');
-        const historyList = window.masterData.filter(r => r.status === '已結案');
-        
-        const activeCountEl = document.getElementById('active-count');
-        if (activeCountEl) activeCountEl.innerText = activeList.length;
+        // 單據管理
+        window.addItemRow = () => {
+            const container = document.getElementById('itemsContainer');
+            const newRow = document.createElement('div');
+            newRow.className = "item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative group";
+            newRow.innerHTML = `
+                <div class="md:col-span-4"><input type="text" placeholder="物件名稱" class="item-name input-dark text-xs"></div>
+                <div class="md:col-span-2"><input type="number" placeholder="數量" class="item-qty input-dark text-xs"></div>
+                <div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div>
+                <div class="md:col-span-3"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div>
+                <div class="md:col-span-1 flex items-center justify-center">
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-zinc-600 hover:text-red-500 transition">
+                        <i data-lucide="minus-circle" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `;
+            container.appendChild(newRow);
+            updateIcons();
+        };
 
-        // A. 渲染當前調度
-        activeList.forEach(r => {
-            const tr = document.createElement('tr');
-            tr.className = "hover:bg-white/5 transition-colors text-white";
+        window.addNewShipment = () => {
+            const category = document.getElementById('itemCategory').value;
+            const customer = document.getElementById('customerName').value || '未註明客戶';
+            const carrier = document.getElementById('carrierSelect').value;
             
-            let actionHtml = '';
-            let deleteBtnHtml = (window.currentUserRole === 'admin') ? `<button onclick="window.deleteRecord('${r.id}')" class="ml-2 p-2 text-zinc-600 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '';
+            const rows = document.querySelectorAll('.item-row');
+            const items = [];
+            rows.forEach(row => {
+                const name = row.querySelector('.item-name').value;
+                if (name) {
+                    items.push({
+                        name: name,
+                        qty: row.querySelector('.item-qty').value || 1,
+                        unit: row.querySelector('.item-unit').value || '件',
+                        note: row.querySelector('.item-note').value || ''
+                    });
+                }
+            });
 
-            // --- 核心權限邏輯 ---
-            if (window.currentUserRole === 'factory') {
-                if (r.status === '待處理') {
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '配送中')" class="px-4 py-2 bg-blue-600 rounded-lg text-xs font-black">確認配送</button>`;
-                } else if (r.status === '配送中') {
-                    const next = (r.type === '加工件') ? '加工中' : '待結案';
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '${next}')" class="px-4 py-2 bg-indigo-600 rounded-lg text-xs font-black">抵達目的地</button>`;
-                }
-            } 
-            else if (window.currentUserRole === 'procure') {
-                if (r.status === '加工中') {
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
-                }
+            if (items.length === 0) return showToast('請輸入載運物件');
+
+            const newEntry = {
+                id: Date.now(),
+                category: category,
+                customer: customer,
+                carrier: carrier,
+                items: items,
+                status: 'INIT',
+                statusText: getInitialStatusText(category),
+                logs: [{time: new Date().toLocaleString(), msg: `單據建立 (${customer})`}],
+                updatedAt: new Date().toLocaleString()
+            };
+
+            shipments.unshift(newEntry);
+            saveAndRender();
+            resetForm();
+            showToast('載運單據已建立');
+        };
+
+        function resetForm() {
+            document.getElementById('customerName').value = '';
+            document.getElementById('itemsContainer').innerHTML = `
+                <div class="item-row grid grid-cols-1 md:grid-cols-12 gap-2 relative">
+                    <div class="md:col-span-4"><input type="text" placeholder="物件名稱" class="item-name input-dark text-xs"></div>
+                    <div class="md:col-span-2"><input type="number" placeholder="數量" class="item-qty input-dark text-xs"></div>
+                    <div class="md:col-span-2"><input type="text" placeholder="單位" class="item-unit input-dark text-xs"></div>
+                    <div class="md:col-span-4"><input type="text" placeholder="用途備註" class="item-note input-dark text-xs"></div>
+                </div>
+            `;
+            updateIcons();
+        }
+
+        function getInitialStatusText(category) {
+            if (category === 'CNC') return '等待廠端通知 (加工中)';
+            if (category === 'CUSTOMER') return '待採購轉交訂單';
+            return '待師傅製作完成';
+        }
+
+        window.updateStatus = (id) => {
+            const index = shipments.findIndex(s => s.id === id);
+            if (index === -1) return;
+            const item = shipments[index];
+            let nextStatus = '';
+            let nextText = '';
+
+            switch (item.category) {
+                case 'CNC':
+                    if (item.status === 'INIT') { nextStatus = 'W1'; nextText = '安排載往加工廠'; }
+                    else if (item.status === 'W1') { nextStatus = 'W2'; nextText = '加工中 (等廠端通知)'; }
+                    else if (item.status === 'W2') { nextStatus = 'W3'; nextText = '已完工 (待載回)'; }
+                    else if (item.status === 'W3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
+                    break;
+                case 'CUSTOMER':
+                    if (item.status === 'INIT') { nextStatus = 'C1'; nextText = '廠務準備中'; }
+                    else if (item.status === 'C1') { nextStatus = 'C2'; nextText = '安排師傅載運中'; }
+                    else if (item.status === 'C2') { nextStatus = 'DONE'; nextText = '客戶已簽收完成'; }
+                    break;
+                case 'GALVANIZING':
+                    if (item.status === 'INIT') { nextStatus = 'G1'; nextText = '廠務安排載運(鍍鋅)'; }
+                    else if (item.status === 'G1') { nextStatus = 'G2'; nextText = '鍍鋅中 (等通知)'; }
+                    else if (item.status === 'G2') { nextStatus = 'G3'; nextText = '已完成 (待安排載回)'; }
+                    else if (item.status === 'G3') { nextStatus = 'DONE'; nextText = '已載回完成'; }
+                    break;
             }
-            else if (window.currentUserRole === 'warehouse' || window.currentUserRole === 'admin') {
-                if (r.status === '加工中') {
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '待結案')" class="px-4 py-2 bg-purple-600 rounded-lg text-xs font-black">加工完成</button>`;
-                } else if (r.status === '待結案') {
-                    actionHtml = `<button onclick="window.updateStatus('${r.id}', '已結案')" class="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-black">結案入庫</button>`;
-                }
+
+            if (nextStatus) {
+                item.status = nextStatus;
+                item.statusText = nextText;
+                item.logs.push({time: new Date().toLocaleString(), msg: nextText});
+                item.updatedAt = new Date().toLocaleString();
+                saveAndRender();
+                showToast('狀態更新成功');
+            }
+        };
+
+        window.deleteItem = (id) => {
+            if (currentRole !== 'admin') return showToast('權限不足');
+            shipments = shipments.filter(s => s.id !== id);
+            saveAndRender();
+        };
+
+        function saveAndRender() {
+            localStorage.setItem('shipments', JSON.stringify(shipments));
+            renderList();
+        }
+
+        function renderList(filter = 'all') {
+            const listContainer = document.getElementById('shipmentList');
+            let displayItems = shipments;
+            if (filter !== 'all') displayItems = shipments.filter(s => s.category === filter);
+
+            if (displayItems.length === 0) {
+                listContainer.innerHTML = `<div class="text-center py-20 text-zinc-600 font-bold tracking-widest">目前沒有任何單據</div>`;
+                return;
             }
 
-            tr.innerHTML = `
-                <td class="px-6 py-5"><input type="checkbox" class="print-checkbox w-5 h-5 accent-yellow-400" data-id="${r.id}"></td>
-                <td class="px-6 py-5"><div class="font-black text-yellow-400">${r.id}</div><div class="text-[10px] text-zinc-500">${r.type}</div></td>
-                <td class="px-6 py-5"><span class="px-3 py-1 bg-zinc-800 rounded-full text-[10px]">${r.status}</span></td>
-                <td class="px-6 py-5 font-bold text-lg">${r.vendor}</td>
-                <td class="px-6 py-5"><div class="space-y-1">${r.items.map(i => `<div class="text-sm">${i.q}${i.u} x ${i.n}</div>`).join('')}</div><div class="text-xs text-zinc-500 mt-1">${r.note || ''}</div></td>
-                <td class="px-6 py-5 flex items-center">${actionHtml}${deleteBtnHtml}</td>`;
-            activeBody.appendChild(tr);
-        });
+            listContainer.innerHTML = displayItems.map(item => `
+                <div class="card-dark rounded-2xl overflow-hidden shadow-2xl transition-all hover:border-zinc-500">
+                    <div class="p-4 border-b border-zinc-800 flex justify-between items-start bg-black/20">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-zinc-800 text-brand-yellow tracking-tighter border border-zinc-700">${categoryNames[item.category]}</span>
+                                <h3 class="font-black text-white text-lg">${item.customer}</h3>
+                            </div>
+                            <div class="flex flex-wrap gap-4 text-[10px] text-zinc-500 font-bold">
+                                <span class="flex items-center gap-1"><i data-lucide="user" class="w-3 h-3 text-brand-yellow"></i> 負責師傅: ${item.carrier}</span>
+                                <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3 text-brand-yellow"></i> 更新時間: ${item.updatedAt}</span>
+                            </div>
+                        </div>
+                        <span class="status-badge ${item.status === 'DONE' ? 'status-completed' : 'status-processing'}">
+                            ${item.statusText}
+                        </span>
+                    </div>
 
-        // B. 渲染歷史紀錄
-        historyList.forEach(r => {
-            const tr = document.createElement('tr');
-            tr.className = "text-zinc-500 text-sm";
-            tr.innerHTML = `
-                <td class="px-6 py-4">${r.id}</td>
-                <td class="px-6 py-4">${r.type}</td>
-                <td class="px-6 py-4 font-bold text-zinc-300">${r.vendor}</td>
-                <td class="px-6 py-4">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</td>
-                <td class="px-6 py-4">${r.items[0]?.n || ''}...</td>
-                <td class="px-6 py-4 text-emerald-500 font-bold">已結案</td>`;
-            historyBody.appendChild(tr);
-        });
+                    <div class="p-4 bg-zinc-900/50">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="text-zinc-500 border-b border-zinc-800">
+                                    <th class="pb-2 font-black text-zinc-600 uppercase">物件名稱</th>
+                                    <th class="pb-2 font-black text-center w-20 text-zinc-600 uppercase">數量</th>
+                                    <th class="pb-2 font-black text-zinc-600 uppercase">備註</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-800/50">
+                                ${item.items.map(subItem => `
+                                    <tr>
+                                        <td class="py-3 font-bold text-zinc-200">${subItem.name}</td>
+                                        <td class="py-3 text-center text-zinc-400 font-mono">${subItem.qty} ${subItem.unit}</td>
+                                        <td class="py-3 text-zinc-500 text-[11px] italic">${subItem.note || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="px-4 py-3 bg-black/40 border-t border-zinc-800 flex justify-between items-center">
+                        <div class="flex gap-2">
+                            ${renderActionButtons(item)}
+                            ${currentRole === 'admin' ? `<button onclick="deleteItem(${item.id})" class="text-zinc-600 p-2 hover:text-red-500 transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                        </div>
+                        <button onclick="toggleLogs(${item.id})" class="text-[10px] text-zinc-600 font-bold hover:text-zinc-400 flex items-center gap-1">
+                            追蹤紀錄 <i data-lucide="history" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="logs-${item.id}" class="hidden p-4 bg-black/60 text-[10px] space-y-2 border-t border-zinc-800 font-mono">
+                        ${item.logs.map(l => `<div class="flex gap-3"><span class="text-brand-yellow/50">${l.time}</span> <span class="text-zinc-400">${l.msg}</span></div>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+            
+            updateIcons();
+        }
 
-        if (window.lucide) lucide.createIcons();
-    };
+        function renderActionButtons(item) {
+            if (item.status === 'DONE') return '<div class="flex items-center gap-1 text-green-500 text-xs font-black py-2"><i data-lucide="check-circle" class="w-4 h-4"></i> 流程已結束</div>';
+            
+            const btnClass = "bg-brand-yellow text-black px-6 py-2 rounded-lg text-xs font-black hover:brightness-110 transition shadow-lg active:scale-95";
+            
+            let canOperate = false;
+            if (item.category === 'CNC') {
+                if ((item.status === 'INIT' || item.status === 'W1' || item.status === 'W3') && currentRole === 'factory') canOperate = true;
+                if (item.status === 'W2' && currentRole === 'purchasing') canOperate = true;
+            } else if (item.category === 'CUSTOMER') {
+                if (item.status === 'INIT' && currentRole === 'purchasing') canOperate = true;
+                if ((item.status === 'C1' || item.status === 'C2') && currentRole === 'factory') canOperate = true;
+            } else if (item.category === 'GALVANIZING') {
+                if ((item.status === 'INIT' || item.status === 'G1' || item.status === 'G3') && currentRole === 'factory') canOperate = true;
+                if (item.status === 'G2' && currentRole === 'purchasing') canOperate = true;
+            }
 
-    // 其他輔助功能
-    window.addItemRow = () => {
-        const container = document.getElementById('item-list');
-        const div = document.createElement('div');
-        div.className = "item-entry grid grid-cols-12 gap-2 mt-2";
-        div.innerHTML = `<input type="text" placeholder="品項" class="col-span-6 px-3 py-2 bg-zinc-800 rounded-lg text-white text-sm item-n">
-                         <input type="number" placeholder="量" class="col-span-3 px-3 py-2 bg-zinc-800 rounded-lg text-white text-sm item-q">
-                         <input type="text" value="件" class="col-span-3 px-3 py-2 bg-zinc-800 rounded-lg text-white text-sm item-u">`;
-        container.appendChild(div);
-    };
+            if (canOperate || currentRole === 'admin') {
+                return `<button onclick="updateStatus(${item.id})" class="${btnClass}">更新至下一階段</button>`;
+            }
 
-    window.printDispatch = () => {
-        const selectedIds = Array.from(document.querySelectorAll('.print-checkbox:checked')).map(cb => cb.dataset.id);
-        if (selectedIds.length === 0) return alert('請先勾選單據');
-        const printData = window.masterData.filter(r => selectedIds.includes(r.id));
-        let content = `<div style="padding:20px; font-family:sans-serif;"><h2>配送任務單</h2><table border="1" style="width:100%; border-collapse:collapse; text-align:left;">
-            <tr><th style="padding:8px">單號</th><th style="padding:8px">目的地</th><th style="padding:8px">品項明細</th><th style="padding:8px">備註</th><th style="padding:8px">簽收</th></tr>`;
-        printData.forEach(item => {
-            content += `<tr><td style="padding:8px">${item.id}</td><td style="padding:8px">${item.vendor}</td><td style="padding:8px">${item.items.map(i=>`${i.q}${i.u} ${i.n}`).join('<br>')}</td><td style="padding:8px">${item.note||''}</td><td width="100"></td></tr>`;
-        });
-        content += `</table></div>`;
-        const win = window.open('', '_blank');
-        win.document.write(content);
-        win.document.close();
-        setTimeout(() => { win.print(); win.close(); }, 500);
-    };
+            return `<span class="text-zinc-600 text-[10px] font-bold py-2 flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3 text-zinc-700"></i> 待 ${item.status.includes('2') || (item.status === 'INIT' && item.category === 'CUSTOMER') ? '採購部門' : '廠務端'} 處理</span>`;
+        }
 
-    window.openModal = () => document.getElementById('modal').classList.remove('hidden');
-    window.closeModal = () => document.getElementById('modal').classList.add('hidden');
-    window.showToast = (msg, type) => {
-        const container = document.getElementById('toast-container');
-        if (!container) return;
-        const toast = document.createElement('div');
-        const colors = { 'success': 'bg-emerald-600', 'danger': 'bg-red-600', 'info': 'bg-blue-600' };
-        toast.className = `${colors[type] || 'bg-zinc-800'} text-white px-6 py-4 rounded-2xl shadow-xl font-bold mb-2 toast-item`;
-        toast.innerText = msg;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-    };
-    window.toggleAll = (source) => {
-        document.querySelectorAll('.print-checkbox').forEach(cb => cb.checked = source.checked);
-    };
-    window.logout = () => {
-        location.reload();
-    };
+        window.toggleLogs = (id) => {
+            const el = document.getElementById(`logs-${id}`);
+            el.classList.toggle('hidden');
+        };
 
-    window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
-</script>
+        window.filterTable = (type) => {
+            renderList(type);
+        };
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.remove('opacity-0');
+            t.classList.add('opacity-100');
+            setTimeout(() => t.classList.add('opacity-0'), 2000);
+        }
+    </script>
 </body>
 </html>
