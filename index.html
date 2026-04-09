@@ -182,27 +182,42 @@
             } catch (e) { alert("發布失敗，請確認 Firebase Rules"); }
         };
 
-        // 初始化
-        window.onload = async () => {
-            try {
-                firebaseApp = initializeApp(firebaseConfig);
-                auth = getAuth(firebaseApp);
-                db = getFirestore(firebaseApp);
-                onAuthStateChanged(auth, async (u) => {
-                    if (!u) await signInAnonymously(auth);
-                    user = u;
-                    initialized = true;
-                    if (user) {
-                        onSnapshot(query(collection(db, 'orders')), (snap) => {
-                            orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                                         .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
-                            render();
-                        });
-                    }
+// 修改後的初始化區塊
+window.onload = async () => {
+    try {
+        firebaseApp = initializeApp(firebaseConfig);
+        auth = getAuth(firebaseApp);
+        db = getFirestore(firebaseApp);
+
+        onAuthStateChanged(auth, async (u) => {
+            if (!u) {
+                try {
+                    await signInAnonymously(auth);
+                } catch (authError) {
+                    console.error("匿名登入失敗:", authError);
+                    // 即使登入失敗也設定為已初始化，讓畫面能跑出來
+                    initialized = true; 
+                    render();
+                    return;
+                }
+            }
+            user = u;
+            initialized = true;
+            if (user) {
+                onSnapshot(query(collection(db, 'orders')), (snap) => {
+                    orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                 .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
                     render();
                 });
-            } catch (e) { initialized = true; render(); }
-        };
+            }
+            render();
+        });
+    } catch (e) {
+        console.error("初始化失敗:", e);
+        initialized = true;
+        render();
+    }
+};
     </script>
 </head>
 <body class="bg-black text-white">
