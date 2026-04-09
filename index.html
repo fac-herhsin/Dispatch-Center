@@ -7,18 +7,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
+        // ===【重要：請在此處替換你的 GAS 網址】===
         const gasWebappUrl = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
 
+        // ===【業務流程定義】===
         const FLOWS = {
             'CNC 二工加工': [
                 { id: 'f_out', label: '廠務安排載出', role: 'factory' },
-                { id: 'p_working', label: '加工廠加工中', role: 'system' },
-                { id: 'p_notified', label: '加工廠通知採購完成', role: 'purchase' },
+                { id: 'f_ing', label: '師傅載運中', role: 'factory' },
+                { id: 'p_wait', label: '加工廠加工中', role: 'system' },
+                { id: 'p_done', label: '加工廠通知採購完成', role: 'purchase' },
                 { id: 'p_to_f', label: '採購通知廠務載回', role: 'purchase' },
                 { id: 'f_back', label: '廠務安排載回', role: 'factory' },
                 { id: 'completed', label: '流程完成', role: 'system' }
             ],
-            '客戶買賣': [
+            '客戶購買': [
                 { id: 'p_order', label: '採購接獲訂單', role: 'purchase' },
                 { id: 'f_prepare', label: '訂單轉交廠務準備', role: 'factory' },
                 { id: 'f_delivery', label: '廠務安排師傅載送', role: 'factory' },
@@ -26,9 +29,10 @@
             ],
             '鍍鋅加工': [
                 { id: 'f_finish', label: '廠內製作完成', role: 'factory' },
-                { id: 'f_eval', label: '廠務評估載出(師傅/委外)', role: 'factory' },
-                { id: 'p_notified', label: '鍍鋅廠通知採購完成', role: 'purchase' },
-                { id: 'p_to_f', label: '採購通知廠務載回', role: 'purchase' },
+                { id: 'f_out', label: '廠務評估載出(師傅/委外)', role: 'factory' },
+                { id: 'p_wait', label: '鍍鋅廠加工中', role: 'system' },
+                { id: 'p_done', label: '鍍鋅廠通知採購完成', role: 'purchase' },
+                { id: 'p_to_f', label: '採購通知廠務已完成', role: 'purchase' },
                 { id: 'f_back', label: '廠務安排載回(師傅/委外)', role: 'factory' },
                 { id: 'completed', label: '流程完成', role: 'system' }
             ]
@@ -42,6 +46,7 @@
 
         const refreshIcons = () => { if (window.lucide) window.lucide.createIcons(); };
 
+        // 同步資料
         window.manualSync = async () => {
             isLoading = true; render();
             try {
@@ -49,15 +54,16 @@
                 const data = await res.json();
                 orders = data.orders || [];
                 masters = data.masters || [];
-            } catch (e) { alert("同步失敗"); }
+            } catch (e) { alert("同步失敗，請檢查網路或 GAS 網址"); }
             isLoading = false; render();
         };
 
+        // 建立新任務
         window.handleCreate = async () => {
             const customerName = document.getElementById('newCustomerName')?.value;
             const type = document.getElementById('newOrderType')?.value;
             const masterName = document.getElementById('newMasterName')?.value;
-            if (!customerName?.trim() || items[0].name === "") return alert("請檢查名稱與品項");
+            if (!customerName?.trim() || items[0].name === "") return alert("請填寫客戶名稱與至少一項品項");
 
             isLoading = true; render();
             const payload = {
@@ -67,13 +73,34 @@
                 items: items.filter(i => i.name),
                 status: FLOWS[type][0].label
             };
-
             await fetch(gasWebappUrl, { method: 'POST', body: JSON.stringify(payload) });
             items = [{ id: Date.now(), name: '', qty: '' }];
             await window.manualSync();
-            alert("任務已發布");
+            alert("任務發布成功");
         };
 
+        // 更新進度狀態
+        window.updateStatus = async (orderId, type, currentStatus) => {
+            const flow = FLOWS[type];
+            const currentIndex = flow.findIndex(f => f.label === currentStatus);
+            const nextStep = flow[currentIndex + 1];
+
+            if (!nextStep) return alert("此任務已結案");
+            if (currentView !== nextStep.role && currentView !== 'admin' && nextStep.role !== 'system') {
+                alert(`權限不足：此步驟需由 【${nextStep.role === 'purchase' ? '採購' : '廠務'}】 執行`);
+                return;
+            }
+
+            if (!confirm(`確定更新狀態為：${nextStep.label}？`)) return;
+            isLoading = true; render();
+            await fetch(gasWebappUrl, {
+                method: 'POST',
+                body: JSON.stringify({ action: "UPDATE_STATUS", id: orderId, newStatus: nextStep.label })
+            });
+            await window.manualSync();
+        };
+
+        // 管理員功能
         window.deleteOrder = async (id) => {
             if (!confirm("確定刪除此單據？")) return;
             isLoading = true; render();
@@ -85,6 +112,7 @@
             const name = document.getElementById('adminMasterName').value;
             if (!name) return;
             await fetch(gasWebappUrl, { method: 'POST', body: JSON.stringify({ action: "ADD_MASTER", name }) });
+            document.getElementById('adminMasterName').value = '';
             await window.manualSync();
         };
 
@@ -94,15 +122,16 @@
             await window.manualSync();
         };
 
+        // 渲染畫面
         const render = () => {
             const root = document.getElementById('app');
             if (currentView === 'login') {
-                root.innerHTML = `<div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white">
+                root.innerHTML = `<div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white text-center">
                     <div class="bg-yellow-500 p-4 rounded-3xl mb-8"><i data-lucide="truck" class="w-12 h-12 text-black"></i></div>
-                    <h1 class="text-3xl font-black mb-12 text-center">薪昌載運追蹤</h1>
+                    <h1 class="text-4xl font-black mb-12">薪昌載運管理系統</h1>
                     <div class="w-full max-w-sm space-y-4">
                         ${['factory', 'purchase', 'admin'].map(r => `
-                            <button onclick="window.login('${r}')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 text-left font-bold capitalize">
+                            <button onclick="window.login('${r}')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 font-bold transition-all capitalize">
                                 ${r === 'factory' ? '廠務人員' : r === 'purchase' ? '採購人員' : '系統管理員'}
                             </button>`).join('')}
                     </div>
@@ -111,74 +140,92 @@
                 root.innerHTML = `
                 <div class="min-h-screen bg-black text-gray-200 pb-20">
                     <header class="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-950 sticky top-0 z-50">
-                        <div><h1 class="text-xl font-black text-white">單據中心</h1><span class="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-bold">${currentView.toUpperCase()}</span></div>
+                        <div><h1 class="text-xl font-black text-white">薪昌載運中心</h1><span class="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-black">${currentView.toUpperCase()}</span></div>
                         <div class="flex gap-2">
-                            <button onclick="window.manualSync()" class="p-3 bg-neutral-900 rounded-xl"><i data-lucide="refresh-cw" class="${isLoading ? 'animate-spin' : ''}"></i></button>
-                            <button onclick="window.logout()" class="p-3 bg-neutral-900 rounded-xl hover:text-red-500"><i data-lucide="log-out"></i></button>
+                            <button onclick="window.manualSync()" class="p-3 bg-neutral-900 rounded-xl"><i data-lucide="refresh-cw" class="${isLoading ? 'animate-spin text-yellow-500' : ''}"></i></button>
+                            <button onclick="window.logout()" class="p-3 bg-neutral-900 rounded-xl hover:text-red-500 transition-all"><i data-lucide="log-out"></i></button>
                         </div>
                     </header>
+
                     <main class="max-w-4xl mx-auto p-6 space-y-8">
                         ${currentView === 'admin' ? `
-                            <section class="bg-blue-900/10 border border-blue-900/30 p-6 rounded-3xl">
-                                <h2 class="font-bold mb-4 text-blue-400">師傅名單管理</h2>
+                            <section class="bg-blue-900/10 border border-blue-900/30 p-6 rounded-3xl shadow-2xl">
+                                <h2 class="font-bold mb-4 text-blue-400 flex items-center gap-2"><i data-lucide="users"></i> 師傅名單管理</h2>
                                 <div class="flex gap-2 mb-4">
-                                    <input id="adminMasterName" class="bg-neutral-800 p-2 rounded-lg flex-grow text-sm" placeholder="新師傅姓名">
-                                    <button onclick="window.addMaster()" class="bg-blue-600 px-4 py-2 rounded-lg text-sm font-bold">新增</button>
+                                    <input id="adminMasterName" class="bg-neutral-800 p-2 rounded-xl flex-grow text-sm outline-none focus:ring-1 ring-blue-500" placeholder="輸入新師傅姓名">
+                                    <button onclick="window.addMaster()" class="bg-blue-600 px-6 py-2 rounded-xl text-sm font-bold hover:bg-blue-500">新增</button>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
-                                    ${masters.map(m => `<span class="bg-neutral-800 px-3 py-1 rounded-full text-xs flex items-center gap-2">${m} <i data-lucide="x" class="w-3 h-3 cursor-pointer text-red-500" onclick="window.deleteMaster('${m}')"></i></span>`).join('')}
+                                    ${masters.map(m => `<span class="bg-neutral-800 px-3 py-1 rounded-full text-xs flex items-center gap-2 border border-neutral-700">${m} <i data-lucide="trash-2" class="w-3 h-3 cursor-pointer text-red-500 hover:scale-125" onclick="window.deleteMaster('${m}')"></i></span>`).join('')}
                                 </div>
-                            </section>
-                        ` : ''}
+                            </section>` : ''}
                         
-                        ${currentView !== 'login' ? `
-                        <section class="bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-800 shadow-xl">
-                            <h2 class="text-xl font-bold mb-6">建立新單據</h2>
+                        ${(currentView === 'factory' || currentView === 'purchase' || currentView === 'admin') ? `
+                        <section class="bg-neutral-900 p-8 rounded-[2.5rem] border border-neutral-800 shadow-2xl">
+                            <h2 class="text-xl font-bold mb-6 flex items-center gap-2"><span class="w-1 h-6 bg-yellow-500 rounded-full"></span> 建立新單據</h2>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                <div><label class="text-[10px] text-gray-500 font-bold">類別</label>
+                                <div><label class="text-[10px] text-gray-500 font-bold ml-1">載運類別</label>
                                     <select id="newOrderType" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500">
                                         ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
                                     </select>
                                 </div>
-                                <div><label class="text-[10px] text-gray-500 font-bold">客戶/目的地</label>
-                                    <input id="newCustomerName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500" placeholder="目的地">
+                                <div><label class="text-[10px] text-gray-500 font-bold ml-1">客戶/加工廠名稱</label>
+                                    <input id="newCustomerName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500" placeholder="請輸入目的地">
                                 </div>
-                                <div><label class="text-[10px] text-gray-500 font-bold">負責師傅</label>
+                                <div><label class="text-[10px] text-gray-500 font-bold ml-1">負責師傅</label>
                                     <select id="newMasterName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500">
+                                        <option value="待安排">待安排</option>
                                         ${masters.map(m => `<option value="${m}">${m}</option>`).join('')}
                                         <option value="委外廠商">委外廠商</option>
                                     </select>
                                 </div>
                             </div>
-                            <div class="space-y-3 mb-8">
-                                ${items.map((item, idx) => `<div class="flex gap-2"><input placeholder="品項" class="flex-grow bg-neutral-800 p-3 rounded-xl" onchange="window.updateItem(${idx},'name',this.value)" value="${item.name}"><input placeholder="數量" class="w-20 bg-neutral-800 p-3 rounded-xl" onchange="window.updateItem(${idx},'qty',this.value)" value="${item.qty}"></div>`).join('')}
-                                <button onclick="window.addItem()" class="w-full py-2 border border-dashed border-neutral-700 rounded-xl text-xs text-gray-500">+ 增加品項</button>
+                            <div class="space-y-3 mb-8 bg-black/20 p-4 rounded-2xl border border-neutral-800">
+                                <label class="text-[10px] text-gray-500 font-bold">品項清單</label>
+                                ${items.map((item, idx) => `<div class="flex gap-2"><input placeholder="物件" class="flex-grow bg-neutral-800 p-3 rounded-xl text-sm" onchange="window.updateItem(${idx},'name',this.value)" value="${item.name}"><input placeholder="數量" class="w-20 bg-neutral-800 p-3 rounded-xl text-sm text-center" onchange="window.updateItem(${idx},'qty',this.value)" value="${item.qty}"></div>`).join('')}
+                                <button onclick="window.addItem()" class="w-full py-2 border border-dashed border-neutral-700 rounded-xl text-xs text-gray-500 hover:text-yellow-500 transition-all">+ 增加品項</button>
                             </div>
-                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl">發布單據</button>
+                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl shadow-lg shadow-yellow-500/10 hover:scale-[1.01] active:scale-[0.98] transition-all">發布任務</button>
                         </section>` : ''}
 
                         <div id="ordersList" class="space-y-4">
-                            ${orders.map(o => `
-                                <div class="bg-neutral-900 p-6 rounded-[2rem] border border-neutral-800">
+                            <h2 class="text-sm font-bold text-neutral-500 ml-2">即時狀態看板 (${orders.length} 筆資料)</h2>
+                            ${orders.length === 0 ? `<div class="text-center py-20 text-neutral-700">尚未有載運單據</div>` : 
+                              orders.map(o => {
+                                const flow = FLOWS[o.type];
+                                const currentIndex = flow.findIndex(f => f.label === o.status);
+                                const nextStep = flow[currentIndex + 1];
+                                const isFinished = currentIndex === flow.length - 1;
+                                const isMine = nextStep && (currentView === nextStep.role || currentView === 'admin');
+
+                                return `
+                                <div class="bg-neutral-900 p-6 rounded-[2rem] border ${isMine ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-neutral-800'} transition-all">
                                     <div class="flex justify-between items-start mb-4">
                                         <div>
-                                            <span class="text-[10px] font-black bg-neutral-800 text-yellow-500 px-2 py-0.5 rounded">${o.type}</span>
-                                            <h3 class="text-xl font-bold mt-1">${o.customerName}</h3>
+                                            <span class="text-[10px] font-black bg-neutral-800 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/30">${o.type}</span>
+                                            <h3 class="text-2xl font-black mt-2 text-white">${o.customerName}</h3>
                                         </div>
                                         <div class="text-right">
-                                            <div class="text-sm font-bold text-yellow-500">${o.status}</div>
-                                            <div class="text-[10px] text-gray-500">${o.masterName}</div>
+                                            <div class="text-lg font-black ${isFinished ? 'text-emerald-500' : 'text-yellow-500'}">${o.status}</div>
+                                            <div class="text-xs text-gray-500 font-bold">負責：${o.masterName}</div>
                                         </div>
                                     </div>
-                                    <div class="space-y-1 mb-4">
-                                        ${o.items.map(i => `<div class="flex justify-between text-sm text-gray-400"><span>${i.name}</span><span>x ${i.qty}</span></div>`).join('')}
+                                    <div class="space-y-1 mb-6 bg-black/30 p-4 rounded-2xl">
+                                        ${o.items.map(i => `<div class="flex justify-between text-sm"><span>${i.name}</span><span class="font-bold text-yellow-500">x ${i.qty}</span></div>`).join('')}
                                     </div>
                                     <div class="flex justify-end gap-2 border-t border-neutral-800 pt-4">
-                                        ${currentView === 'admin' ? `<button onclick="window.deleteOrder('${o.id}')" class="text-xs text-red-500 font-bold px-3 py-1 bg-red-500/10 rounded-lg">刪除單據</button>` : ''}
-                                        <button class="text-xs text-gray-400 font-bold px-3 py-1 bg-neutral-800 rounded-lg">檢視詳情</button>
+                                        ${!isFinished ? `
+                                            <button onclick="window.updateStatus('${o.id}', '${o.type}', '${o.status}')" 
+                                                class="px-8 py-3 rounded-xl text-sm font-black transition-all shadow-xl
+                                                ${isMine ? 'bg-yellow-500 text-black hover:scale-105 active:scale-95' : 'bg-neutral-800 text-neutral-600 cursor-not-allowed opacity-50'}">
+                                                推進進度：${nextStep.label}
+                                            </button>
+                                        ` : `<span class="bg-emerald-500/10 text-emerald-500 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><i data-lucide="check-circle"></i> 載運已完成</span>`}
+                                        
+                                        ${currentView === 'admin' ? `<button onclick="window.deleteOrder('${o.id}')" class="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><i data-lucide="trash-2"></i></button>` : ''}
                                     </div>
-                                </div>
-                            `).join('')}
+                                </div>`
+                            }).join('')}
                         </div>
                     </main>
                 </div>`;
@@ -193,7 +240,7 @@
         window.onload = () => { render(); };
     </script>
 </head>
-<body class="bg-black">
+<body class="bg-black text-white selection:bg-yellow-500 selection:text-black">
     <div id="app"></div>
 </body>
 </html>
