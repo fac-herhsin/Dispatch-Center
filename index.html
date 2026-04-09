@@ -7,22 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // ===【1. 請務必替換這裡的資料】===
-        const firebaseConfig = {
-            apiKey: "你的真實API_KEY",
-            authDomain: "你的真實PROJECT_ID.firebaseapp.com",
-            projectId: "你的真實PROJECT_ID",
-            storageBucket: "你的真實PROJECT_ID.appspot.com",
-            messagingSenderId: "你的真實SENDER_ID",
-            appId: "你的真實APP_ID"
-        };
-
-        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
+    <script>
+        // ===【1. 設定你的 GAS 網址】===
+        const gasWebappUrl = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
 
         // ===【2. 全局配置】===
         const FLOWS = {
@@ -51,80 +38,175 @@
         const MASTER_LIST = ["何師傅", "阿芬", "陳先生", "張經理"];
 
         // 狀態管理
-        let firebaseApp, auth, db;
-        let user = null, currentView = 'login', orders = [], initialized = false;
+        let currentView = 'login';
+        let orders = [];
         let items = [{ id: Date.now(), name: '', qty: '', note: '' }];
+        let isLoading = false;
 
         const refreshIcons = () => { if (window.lucide) window.lucide.createIcons(); };
 
-        // ===【3. Google Sheets 同步】===
-        async function syncToGoogleSheets(orderData) {
-            if (!SHEET_API_URL) return;
+        // ===【3. 資料操作：同步與發佈】===
+        
+        // 從 GAS 抓取資料
+        window.manualSync = async () => {
+            isLoading = true;
+            render();
             try {
-                const formData = new URLSearchParams();
-                formData.append("data", JSON.stringify({
-                    ...orderData,
-                    timestamp: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
-                }));
-                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: formData });
-            } catch (err) { console.error("同步失敗:", err); }
-        }
+                const response = await fetch(`${gasWebappUrl}?t=${Date.now()}`);
+                const data = await response.json();
+                orders = data || [];
+                console.log("資料更新成功", orders);
+            } catch (e) {
+                console.error("同步失敗", e);
+                alert("雲端同步失敗，請檢查網路或 GAS 設定");
+            } finally {
+                isLoading = false;
+                render();
+            }
+        };
 
-        // ===【4. 渲染邏輯】===
+        // 發佈新任務到 GAS
+        window.handleCreate = async () => {
+            const customerName = document.getElementById('newCustomerName')?.value;
+            const type = document.getElementById('newOrderType')?.value;
+            const masterName = document.getElementById('newMasterName')?.value;
+            
+            const validItems = items.filter(i => i.name.trim() !== "");
+            if (!customerName?.trim()) return alert("請輸入客戶名稱");
+            if (validItems.length === 0) return alert("請至少填寫一個品項");
+
+            isLoading = true;
+            render();
+
+            const newOrder = {
+                action: "CREATE",
+                id: 'HC-' + Date.now().toString().slice(-6),
+                type: type,
+                customerName: customerName,
+                masterName: masterName,
+                items: validItems,
+                status: FLOWS[type][0].label,
+                timestamp: new Date().toISOString()
+            };
+
+            try {
+                await fetch(gasWebappUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(newOrder)
+                });
+
+                // 成功後清空與重新整理
+                setTimeout(async () => {
+                    items = [{ id: Date.now(), name: '', qty: '', note: '' }];
+                    await window.manualSync();
+                    alert("任務發布成功！");
+                }, 1000);
+            } catch (e) {
+                alert("發佈失敗");
+                isLoading = false;
+                render();
+            }
+        };
+
+        // ===【4. 畫面渲染】===
         const render = () => {
             const root = document.getElementById('app');
             if (!root) return;
 
-            if (!initialized) {
-                root.innerHTML = `<div class="min-h-screen bg-black flex items-center justify-center text-yellow-500">初始化中...</div>`;
-                return;
-            }
-
             if (currentView === 'login') {
                 root.innerHTML = `
                 <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white">
-                    <h1 class="text-4xl font-black mb-12">何鑫實業載運系統</h1>
+                    <div class="bg-yellow-500 p-4 rounded-3xl mb-8">
+                        <i data-lucide="truck" class="w-12 h-12 text-black"></i>
+                    </div>
+                    <h1 class="text-4xl font-black mb-2">何鑫 / 薪昌</h1>
+                    <p class="text-yellow-500 tracking-[0.3em] text-sm mb-12 uppercase">載運追蹤管理系統</p>
                     <div class="w-full max-w-sm space-y-4">
-                        ${['factory', 'purchase', 'admin'].map(role => `
-                            <button onclick="window.setView('${role}')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 transition-all text-left">
-                                <span class="text-lg font-bold">${role === 'factory' ? '廠務人員' : role === 'purchase' ? '採購人員' : '管理員'}</span>
-                            </button>
-                        `).join('')}
+                        <button onclick="window.login('factory')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 transition-all text-left group">
+                            <span class="text-lg font-bold group-hover:text-yellow-500">廠務人員</span>
+                        </button>
+                        <button onclick="window.login('purchase')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 transition-all text-left group">
+                            <span class="text-lg font-bold group-hover:text-yellow-500">採購人員</span>
+                        </button>
+                        <button onclick="window.login('admin')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 transition-all text-left group">
+                            <span class="text-lg font-bold group-hover:text-yellow-500">系統管理員</span>
+                        </button>
                     </div>
                 </div>`;
             } else {
                 root.innerHTML = `
                 <div class="min-h-screen bg-black text-gray-200 pb-20">
-                    <header class="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-950">
-                        <h1 class="text-xl font-black">載運單據中心 (${currentView})</h1>
-                        <button onclick="window.setView('login')" class="text-sm text-neutral-500">登出</button>
+                    <header class="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-950 sticky top-0 z-50">
+                        <div>
+                            <h1 class="text-xl font-black text-white">載運單據中心</h1>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="bg-yellow-500 text-black text-[10px] font-black px-2 py-0.5 rounded uppercase">${currentView}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="window.manualSync()" class="p-3 bg-neutral-900 rounded-xl hover:bg-neutral-800">
+                                <i data-lucide="refresh-cw" class="w-5 h-5 ${isLoading ? 'animate-spin text-yellow-500' : ''}"></i>
+                            </button>
+                            <button onclick="window.logout()" class="p-3 bg-neutral-900 rounded-xl hover:text-red-500">
+                                <i data-lucide="log-out" class="w-5 h-5"></i>
+                            </button>
+                        </div>
                     </header>
+
                     <main class="max-w-4xl mx-auto p-6 space-y-10">
                         ${(currentView === 'factory' || currentView === 'admin') ? `
-                        <section class="bg-neutral-900 rounded-3xl p-8 border border-neutral-800">
-                            <h2 class="text-xl font-bold mb-6">建立新任務</h2>
+                        <section class="bg-neutral-900 rounded-[2.5rem] p-8 border border-neutral-800 shadow-2xl">
+                            <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                                <span class="w-2 h-6 bg-yellow-500 rounded-full"></span> 建立新任務
+                            </h2>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                <select id="newOrderType" class="bg-neutral-800 p-4 rounded-xl outline-none">
-                                    ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
-                                </select>
-                                <input id="newCustomerName" placeholder="客戶名稱" class="bg-neutral-800 p-4 rounded-xl outline-none" />
-                                <select id="newMasterName" class="bg-neutral-800 p-4 rounded-xl outline-none">
-                                    ${MASTER_LIST.map(m => `<option value="${m}">${m}</option>`).join('')}
-                                </select>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] text-neutral-500 font-bold ml-1">任務類型</label>
+                                    <select id="newOrderType" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500">
+                                        ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] text-neutral-500 font-bold ml-1">客戶/目的地</label>
+                                    <input id="newCustomerName" placeholder="請輸入名稱" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500" />
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[10px] text-neutral-500 font-bold ml-1">負責師傅</label>
+                                    <select id="newMasterName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none border border-transparent focus:border-yellow-500">
+                                        ${MASTER_LIST.map(m => `<option value="${m}">${m}</option>`).join('')}
+                                    </select>
+                                </div>
                             </div>
-                            <div id="itemsContainer" class="space-y-2 mb-6">
+
+                            <div id="itemsContainer" class="space-y-3 mb-8 bg-black/30 p-4 rounded-2xl border border-neutral-800">
+                                <label class="text-[10px] text-neutral-500 font-bold">品項明細</label>
                                 ${items.map((item, idx) => `
-                                    <div class="flex gap-2">
-                                        <input placeholder="物件" class="flex-grow bg-neutral-800 p-2 rounded-lg text-sm" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
-                                        <input placeholder="數量" class="w-20 bg-neutral-800 p-2 rounded-lg text-sm" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
-                                        <button onclick="window.removeItem(${item.id})" class="text-red-500">✕</button>
+                                    <div class="flex gap-3 items-center">
+                                        <input placeholder="物件名稱" class="flex-grow bg-neutral-800 p-3 rounded-xl text-sm outline-none" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
+                                        <input placeholder="數量" class="w-24 bg-neutral-800 p-3 rounded-xl text-sm outline-none" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
+                                        <button onclick="window.removeItem(${item.id})" class="p-2 text-neutral-600 hover:text-red-500">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
                                     </div>
                                 `).join('')}
-                                <button onclick="window.addItem()" class="text-xs text-yellow-500 mt-2">+ 新增項目</button>
+                                <button onclick="window.addItem()" class="w-full py-3 border border-dashed border-neutral-700 rounded-xl text-xs text-neutral-500 hover:text-yellow-500 hover:border-yellow-500 transition-all">+ 新增品項</button>
                             </div>
-                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl">發布任務</button>
+
+                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl shadow-lg shadow-yellow-500/10 hover:scale-[1.01] active:scale-[0.98] transition-all">
+                                發布載運任務
+                            </button>
                         </section>` : ''}
-                        <div id="ordersList" class="space-y-4"></div>
+
+                        <div class="space-y-4">
+                            <h2 class="text-lg font-bold text-neutral-400 flex justify-between items-center">
+                                當前單據狀態 <span class="text-xs bg-neutral-800 px-2 py-1 rounded text-neutral-500">${orders.length} 筆資料</span>
+                            </h2>
+                            <div id="ordersList" class="space-y-4">
+                                ${orders.length === 0 ? '<div class="text-center py-20 text-neutral-600">目前沒有進行中的任務</div>' : ''}
+                            </div>
+                        </div>
                     </main>
                 </div>`;
                 renderOrders();
@@ -136,88 +218,47 @@
             const container = document.getElementById('ordersList');
             if (!container) return;
             container.innerHTML = orders.map(order => {
-                const flow = FLOWS[order.type] || [];
-                const isFinished = order.currentStepIndex === flow.length - 1;
+                const isFinished = order.status === '流程完成' || order.status === '送達完成' || order.status === '已結案';
                 return `
-                <div class="bg-neutral-900 p-6 rounded-2xl border border-neutral-800">
-                    <div class="flex justify-between items-start">
+                <div class="bg-neutral-900 p-6 rounded-[2rem] border border-neutral-800 hover:border-neutral-700 transition-all">
+                    <div class="flex justify-between items-start mb-4">
                         <div>
-                            <span class="text-xs text-yellow-500">${order.type}</span>
-                            <h3 class="text-xl font-bold text-white">${order.customerName}</h3>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[10px] font-black bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded uppercase tracking-wider">${order.type}</span>
+                                <span class="text-[10px] text-neutral-600 font-bold">${order.id || ''}</span>
+                            </div>
+                            <h3 class="text-xl font-black text-white">${order.customerName}</h3>
                         </div>
-                        <span class="font-bold ${isFinished ? 'text-green-500' : 'text-yellow-500'}">${order.status}</span>
+                        <div class="flex flex-col items-end">
+                            <span class="text-sm font-black ${isFinished ? 'text-emerald-500' : 'text-yellow-500'}">${order.status}</span>
+                            <span class="text-[10px] text-neutral-600 mt-1">${order.masterName || '未指定師傅'}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-1 mb-4">
+                        ${(Array.isArray(order.items) ? order.items : []).map(i => `
+                            <div class="text-sm text-neutral-400 flex justify-between">
+                                <span>${i.name}</span>
+                                <span class="font-bold text-neutral-200">x ${i.qty}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div class="pt-4 border-t border-neutral-800 flex justify-end">
+                        <button class="px-4 py-2 bg-neutral-800 rounded-lg text-xs font-bold hover:bg-neutral-700">檢視詳情</button>
                     </div>
                 </div>`;
             }).join('');
         };
 
         // 控制邏輯
-        window.setView = (v) => { currentView = v; render(); };
+        window.login = (role) => { currentView = role; window.manualSync(); };
+        window.logout = () => { currentView = 'login'; render(); };
         window.addItem = () => { items.push({ id: Date.now(), name: '', qty: '', note: '' }); render(); };
         window.updateItem = (idx, field, val) => { items[idx][field] = val; };
         window.removeItem = (id) => { if (items.length > 1) { items = items.filter(i => i.id !== id); render(); } };
 
-        window.handleCreate = async () => {
-            if (!db) return alert("系統未連線");
-            const customerName = document.getElementById('newCustomerName')?.value;
-            const type = document.getElementById('newOrderType')?.value;
-            const masterName = document.getElementById('newMasterName')?.value;
-            if (!customerName?.trim()) return alert("請輸入客戶");
-
-            const newOrder = {
-                type, customerName, masterName,
-                items: items.filter(i => i.name.trim() !== ""),
-                currentStepIndex: 0,
-                status: FLOWS[type][0].label,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            };
-
-            try {
-                const docRef = await addDoc(collection(db, 'orders'), newOrder);
-                await syncToGoogleSheets({ id: docRef.id, ...newOrder });
-                items = [{ id: Date.now(), name: '', qty: '', note: '' }];
-                alert("建立成功！");
-                render();
-            } catch (e) { alert("發布失敗，請確認 Firebase Rules"); }
-        };
-
-// 修改後的初始化區塊
-window.onload = async () => {
-    try {
-        firebaseApp = initializeApp(firebaseConfig);
-        auth = getAuth(firebaseApp);
-        db = getFirestore(firebaseApp);
-
-        onAuthStateChanged(auth, async (u) => {
-            if (!u) {
-                try {
-                    await signInAnonymously(auth);
-                } catch (authError) {
-                    console.error("匿名登入失敗:", authError);
-                    // 即使登入失敗也設定為已初始化，讓畫面能跑出來
-                    initialized = true; 
-                    render();
-                    return;
-                }
-            }
-            user = u;
-            initialized = true;
-            if (user) {
-                onSnapshot(query(collection(db, 'orders')), (snap) => {
-                    orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                                 .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
-                    render();
-                });
-            }
-            render();
-        });
-    } catch (e) {
-        console.error("初始化失敗:", e);
-        initialized = true;
-        render();
-    }
-};
+        window.onload = () => { render(); };
     </script>
 </head>
 <body class="bg-black text-white">
