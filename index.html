@@ -5,107 +5,207 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>何鑫實業 / 薪昌 - 載運追蹤管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDKs -->
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // --- 1. 重要：請填入你的 Firebase 配置 ---
-    // 你可以在 Firebase 控制台 > 專案設定 > 您的應用程式中找到這段 JSON
-    const firebaseConfig = {
-        apiKey: "你的API_KEY",
-        authDomain: "你的PROJECT_ID.firebaseapp.com",
-        projectId: "你的PROJECT_ID",
-        storageBucket: "你的PROJECT_ID.appspot.com",
-        messagingSenderId: "你的SENDER_ID",
-        appId: "你的APP_ID"
-    };
+        // ===【1. 請務必替換這裡的資料】===
+        const firebaseConfig = {
+            apiKey: "你的真實API_KEY",
+            authDomain: "你的真實PROJECT_ID.firebaseapp.com",
+            projectId: "你的真實PROJECT_ID",
+            storageBucket: "你的真實PROJECT_ID.appspot.com",
+            messagingSenderId: "你的真實SENDER_ID",
+            appId: "你的真實APP_ID"
+        };
 
-    let firebaseApp, auth, db;
-    const appId = 'logistic-track-system';
-    const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
+        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzCzrejSV2l1QpY1zmZhrP2_zsbbz52tuGe_5Cc_lnNiC1a1QQ6wx3jw57AiOP4bs1i/exec"; 
 
-    // 狀態管理
-    let user = null;
-    let currentView = 'login';
-    let orders = [];
-    let items = [{ id: Date.now(), name: '', qty: '', note: '' }];
-    let initialized = false;
+        // ===【2. 全局配置】===
+        const FLOWS = {
+            'CNC 二工加工': [
+                { id: 'factory_out', label: '廠務安排載出', role: 'factory' },
+                { id: 'processing', label: '加工廠加工中', role: 'purchase' },
+                { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
+                { id: 'factory_back', label: '廠務安排載回', role: 'factory' },
+                { id: 'completed', label: '流程完成', role: 'system' }
+            ],
+            '客戶買賣': [
+                { id: 'purchase_order', label: '採購獲取訂單', role: 'purchase' },
+                { id: 'factory_prepare', label: '廠務準備物件', role: 'factory' },
+                { id: 'factory_delivery', label: '廠內師傅配送中', role: 'factory' },
+                { id: 'completed', label: '送達完成', role: 'system' }
+            ],
+            '鍍鋅加工': [
+                { id: 'factory_production', label: '廠內製作完成', role: 'factory' },
+                { id: 'factory_out', label: '廠務安排載出', role: 'factory' },
+                { id: 'processing', label: '鍍鋅廠加工中', role: 'purchase' },
+                { id: 'purchase_notified', label: '採購接獲完成通知', role: 'purchase' },
+                { id: 'factory_back', label: '廠務安排載回', role: 'factory' },
+                { id: 'completed', label: '流程完成', role: 'system' }
+            ]
+        };
+        const MASTER_LIST = ["何師傅", "阿芬", "陳先生", "張經理"];
 
-    // --- 2. 修正後的 Google Sheets 同步函數 ---
-    async function syncToGoogleSheets(orderData) {
-        if (!SHEET_API_URL) return;
-        try {
-            // 使用 URLSearchParams 處理跨域 POST 轉 GET 的問題（Google Apps Script 特性）
-            const formData = new URLSearchParams();
-            formData.append("data", JSON.stringify({
-                ...orderData,
-                timestamp: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
-            }));
+        // 狀態管理
+        let firebaseApp, auth, db;
+        let user = null, currentView = 'login', orders = [], initialized = false;
+        let items = [{ id: Date.now(), name: '', qty: '', note: '' }];
 
-            // Google Apps Script 接收 POST 較嚴格，建議使用 fetch 但不處理回應
-            await fetch(SHEET_API_URL, {
-                method: 'POST',
-                mode: 'no-cors', // 必須維持 no-cors，否則會觸發 CORS 錯誤
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            });
-            console.log("資料已嘗試傳送至試算表");
-        } catch (err) {
-            console.error("試算表同步錯誤:", err);
+        const refreshIcons = () => { if (window.lucide) window.lucide.createIcons(); };
+
+        // ===【3. Google Sheets 同步】===
+        async function syncToGoogleSheets(orderData) {
+            if (!SHEET_API_URL) return;
+            try {
+                const formData = new URLSearchParams();
+                formData.append("data", JSON.stringify({
+                    ...orderData,
+                    timestamp: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
+                }));
+                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: formData });
+            } catch (err) { console.error("同步失敗:", err); }
         }
-    }
 
-    // --- 3. 修改後的初始化流程 ---
-    const startApp = async () => {
-        try {
-            firebaseApp = initializeApp(firebaseConfig);
-            auth = getAuth(firebaseApp);
-            db = getFirestore(firebaseApp);
+        // ===【4. 渲染邏輯】===
+        const render = () => {
+            const root = document.getElementById('app');
+            if (!root) return;
 
-            onAuthStateChanged(auth, async (u) => {
-                if (!u) {
-                    await signInAnonymously(auth);
-                }
-                user = u;
-                initialized = true;
-                
-                if (user) {
-                    // 修正路徑：確保與 Firebase Console 內的路徑一致
-                    const q = query(collection(db, 'orders')); 
-                    onSnapshot(q, (snap) => {
-                        orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                                     .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
-                        render();
-                    });
-                }
+            if (!initialized) {
+                root.innerHTML = `<div class="min-h-screen bg-black flex items-center justify-center text-yellow-500">初始化中...</div>`;
+                return;
+            }
+
+            if (currentView === 'login') {
+                root.innerHTML = `
+                <div class="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white">
+                    <h1 class="text-4xl font-black mb-12">何鑫實業載運系統</h1>
+                    <div class="w-full max-w-sm space-y-4">
+                        ${['factory', 'purchase', 'admin'].map(role => `
+                            <button onclick="window.setView('${role}')" class="w-full p-6 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 transition-all text-left">
+                                <span class="text-lg font-bold">${role === 'factory' ? '廠務人員' : role === 'purchase' ? '採購人員' : '管理員'}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>`;
+            } else {
+                root.innerHTML = `
+                <div class="min-h-screen bg-black text-gray-200 pb-20">
+                    <header class="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-950">
+                        <h1 class="text-xl font-black">載運單據中心 (${currentView})</h1>
+                        <button onclick="window.setView('login')" class="text-sm text-neutral-500">登出</button>
+                    </header>
+                    <main class="max-w-4xl mx-auto p-6 space-y-10">
+                        ${(currentView === 'factory' || currentView === 'admin') ? `
+                        <section class="bg-neutral-900 rounded-3xl p-8 border border-neutral-800">
+                            <h2 class="text-xl font-bold mb-6">建立新任務</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <select id="newOrderType" class="bg-neutral-800 p-4 rounded-xl outline-none">
+                                    ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
+                                </select>
+                                <input id="newCustomerName" placeholder="客戶名稱" class="bg-neutral-800 p-4 rounded-xl outline-none" />
+                                <select id="newMasterName" class="bg-neutral-800 p-4 rounded-xl outline-none">
+                                    ${MASTER_LIST.map(m => `<option value="${m}">${m}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div id="itemsContainer" class="space-y-2 mb-6">
+                                ${items.map((item, idx) => `
+                                    <div class="flex gap-2">
+                                        <input placeholder="物件" class="flex-grow bg-neutral-800 p-2 rounded-lg text-sm" onchange="window.updateItem(${idx}, 'name', this.value)" value="${item.name}" />
+                                        <input placeholder="數量" class="w-20 bg-neutral-800 p-2 rounded-lg text-sm" onchange="window.updateItem(${idx}, 'qty', this.value)" value="${item.qty}" />
+                                        <button onclick="window.removeItem(${item.id})" class="text-red-500">✕</button>
+                                    </div>
+                                `).join('')}
+                                <button onclick="window.addItem()" class="text-xs text-yellow-500 mt-2">+ 新增項目</button>
+                            </div>
+                            <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-bold py-4 rounded-xl">發布任務</button>
+                        </section>` : ''}
+                        <div id="ordersList" class="space-y-4"></div>
+                    </main>
+                </div>`;
+                renderOrders();
+            }
+            refreshIcons();
+        };
+
+        const renderOrders = () => {
+            const container = document.getElementById('ordersList');
+            if (!container) return;
+            container.innerHTML = orders.map(order => {
+                const flow = FLOWS[order.type] || [];
+                const isFinished = order.currentStepIndex === flow.length - 1;
+                return `
+                <div class="bg-neutral-900 p-6 rounded-2xl border border-neutral-800">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-xs text-yellow-500">${order.type}</span>
+                            <h3 class="text-xl font-bold text-white">${order.customerName}</h3>
+                        </div>
+                        <span class="font-bold ${isFinished ? 'text-green-500' : 'text-yellow-500'}">${order.status}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        };
+
+        // 控制邏輯
+        window.setView = (v) => { currentView = v; render(); };
+        window.addItem = () => { items.push({ id: Date.now(), name: '', qty: '', note: '' }); render(); };
+        window.updateItem = (idx, field, val) => { items[idx][field] = val; };
+        window.removeItem = (id) => { if (items.length > 1) { items = items.filter(i => i.id !== id); render(); } };
+
+        window.handleCreate = async () => {
+            if (!db) return alert("系統未連線");
+            const customerName = document.getElementById('newCustomerName')?.value;
+            const type = document.getElementById('newOrderType')?.value;
+            const masterName = document.getElementById('newMasterName')?.value;
+            if (!customerName?.trim()) return alert("請輸入客戶");
+
+            const newOrder = {
+                type, customerName, masterName,
+                items: items.filter(i => i.name.trim() !== ""),
+                currentStepIndex: 0,
+                status: FLOWS[type][0].label,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            };
+
+            try {
+                const docRef = await addDoc(collection(db, 'orders'), newOrder);
+                await syncToGoogleSheets({ id: docRef.id, ...newOrder });
+                items = [{ id: Date.now(), name: '', qty: '', note: '' }];
+                alert("建立成功！");
                 render();
-            });
-        } catch (err) {
-            console.error("初始化失敗:", err);
-            alert("系統連線失敗，請檢查 Firebase 配置");
-        }
-    };
+            } catch (e) { alert("發布失敗，請確認 Firebase Rules"); }
+        };
 
-    // (其餘 render, handleCreate 等函數保持不變，但請確認 addDoc 的路徑)
-    window.handleCreate = async () => {
-        if (!db) return alert("資料庫未就緒");
-        // ... 原有的獲取資料邏輯 ...
-        try {
-            const docRef = await addDoc(collection(db, 'orders'), newOrder);
-            await syncToGoogleSheets({ id: docRef.id, ...newOrder });
-            items = [{ id: Date.now(), name: '', qty: '', note: '' }];
-            render();
-        } catch (e) { alert("發布失敗"); }
-    };
-
-    window.onload = startApp;
-</script>
+        // 初始化
+        window.onload = async () => {
+            try {
+                firebaseApp = initializeApp(firebaseConfig);
+                auth = getAuth(firebaseApp);
+                db = getFirestore(firebaseApp);
+                onAuthStateChanged(auth, async (u) => {
+                    if (!u) await signInAnonymously(auth);
+                    user = u;
+                    initialized = true;
+                    if (user) {
+                        onSnapshot(query(collection(db, 'orders')), (snap) => {
+                            orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                         .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+                            render();
+                        });
+                    }
+                    render();
+                });
+            } catch (e) { initialized = true; render(); }
+        };
+    </script>
 </head>
-<body class="bg-black antialiased">
+<body class="bg-black text-white">
     <div id="app"></div>
 </body>
 </html>
