@@ -10,30 +10,27 @@
         // ===【重要：請在此處確認你的 GAS 網址】===
         const gasWebappUrl = "https://script.google.com/macros/s/AKfycbxH9NsFpOkALtoFxkACscXvfOWbY7aofphB7Z7EFDC8qE96zwAlrWHYWPfsyPyj6mnV/exec"; 
 
-        // ===【業務流程定義】===
+        // ===【全新業務流程定義】===
         const FLOWS = {
-            'CNC 二工加工': [
-                { id: 'f1', label: '廠務安排載出', role: 'factory' },
-                { id: 'f2', label: '師傅載運中', role: 'factory' },
-                { id: 'p1', label: '加工廠加工中', role: 'purchase' },
-                { id: 'p2', label: '加工廠通知採購完成', role: 'purchase' },
-                { id: 'p3', label: '採購通知廠務載回', role: 'purchase' },
-                { id: 'f3', label: '廠務安排載回', role: 'factory' },
-                { id: 'done', label: '流程完成', role: 'system' }
+            '銷售': [
+                { id: 's1', label: '採購新增單據', role: 'purchase' },
+                { id: 's2', label: '廠務接收單據整備', role: 'factory' },
+                { id: 's3', label: '廠務出貨', role: 'factory' },
+                { id: 'done', label: '任務結案', role: 'system' }
             ],
-            '客戶購買': [
-                { id: 'p1', label: '採購接獲訂單', role: 'purchase' },
-                { id: 'p2', label: '訂單轉交廠務準備', role: 'purchase' },
-                { id: 'f1', label: '廠務安排師傅載送', role: 'factory' },
-                { id: 'done', label: '送達完成', role: 'system' }
+            'CNC 二工加工': [
+                { id: 'c1', label: '廠務出貨', role: 'factory' },
+                { id: 'c2', label: '加工完成(廠商通知採購)', role: 'purchase' },
+                { id: 'c3', label: '可載貨(採購通知廠務)', role: 'purchase' },
+                { id: 'c4', label: '廠務載回', role: 'factory' },
+                { id: 'done', label: '任務結案', role: 'system' }
             ],
             '鍍鋅加工': [
-                { id: 'f1', label: '廠務評估載出(師傅/委外)', role: 'factory' },
-                { id: 'p1', label: '鍍鋅廠加工中', role: 'purchase' },
-                { id: 'p2', label: '鍍鋅廠通知採購完成', role: 'purchase' },
-                { id: 'p3', label: '採購通知廠務已完成', role: 'purchase' },
-                { id: 'f2', label: '廠務安排載回(師傅/委外)', role: 'factory' },
-                { id: 'done', label: '流程完成', role: 'system' }
+                { id: 'g1', label: '廠務出貨', role: 'factory' },
+                { id: 'g2', label: '加工完成(廠商通知採購)', role: 'purchase' },
+                { id: 'g3', label: '可載貨(採購通知廠務)', role: 'purchase' },
+                { id: 'g4', label: '廠務/委外載回', role: 'factory' },
+                { id: 'done', label: '任務結案', role: 'system' }
             ]
         };
 
@@ -61,9 +58,12 @@
             const type = document.getElementById('newOrderType')?.value;
             const masterName = document.getElementById('newMasterName')?.value;
             
-            // 同步最後一次輸入的值
+            if (!customerName?.trim() || items.length === 0 || !items[0].name.trim()) {
+                return alert("請填寫目的地與至少一項明細品項！");
+            }
+
+            // 過濾無效空列
             const validItems = items.filter(i => i.name.trim() !== "");
-            if (!customerName?.trim() || validItems.length === 0) return alert("請填寫目的地與明細");
 
             isLoading = true; render();
             const payload = {
@@ -91,7 +91,7 @@
 
             if (!nextStep) return;
             if (currentView !== 'admin' && nextStep.role !== 'system' && currentView !== nextStep.role) {
-                alert(`權限不足！需由【${nextStep.role === 'purchase' ? '採購' : '廠務'}】點擊`);
+                alert(`權限不足！此步驟需由【${nextStep.role === 'purchase' ? '採購人員' : '廠務人員'}】執行`);
                 return;
             }
 
@@ -138,10 +138,14 @@
                         <h1 class="text-4xl font-black tracking-tight mb-2">何鑫實業</h1>
                         <p class="text-yellow-500 font-bold tracking-[0.3em] text-sm">薪昌載運管理系統</p>
                     </div>
-                    <div class="w-full max-sm space-y-3">
-                        ${['factory', 'purchase', 'admin'].map(r => `
-                            <button onclick="window.login('${r}')" class="w-full p-5 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 font-bold transition-all shadow-lg active:scale-95 text-white">
-                                ${r === 'factory' ? '廠務人員入口' : r === 'purchase' ? '採購人員入口' : '管理員控制台'}
+                    <div class="w-full max-w-sm space-y-3">
+                        ${[
+                            { role: 'purchase', label: '採購人員入口' },
+                            { role: 'factory', label: '廠務人員入口' },
+                            { role: 'admin', label: '管理員控制台' }
+                        ].map(r => `
+                            <button onclick="window.login('${r.role}')" class="w-full p-5 bg-neutral-900 border border-neutral-800 rounded-2xl hover:border-yellow-500 font-bold transition-all shadow-lg active:scale-95 text-white">
+                                ${r.label}
                             </button>`).join('')}
                     </div>
                 </div>`;
@@ -151,7 +155,9 @@
                     <header class="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-950/80 backdrop-blur-md sticky top-0 z-50">
                         <div>
                             <h1 class="text-lg font-black text-white">何鑫實業 / 薪昌載運</h1>
-                            <span class="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-black uppercase">${currentView}</span>
+                            <span class="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-black uppercase">
+                                ${currentView === 'purchase' ? '採購權限' : currentView === 'factory' ? '廠務權限' : '最高管理員'}
+                            </span>
                         </div>
                         <div class="flex gap-2">
                             <button onclick="window.manualSync()" class="p-3 bg-neutral-900 rounded-xl hover:bg-neutral-800"><i data-lucide="refresh-cw" class="${isLoading ? 'animate-spin text-yellow-500' : ''}"></i></button>
@@ -180,10 +186,10 @@
                                         ${Object.keys(FLOWS).map(f => `<option value="${f}">${f}</option>`).join('')}
                                     </select>
                                 </div>
-                                <div class="space-y-1"><label class="text-[10px] text-gray-500 font-bold ml-1">目的地(客戶/加工廠)</label>
+                                <div class="space-y-1"><label class="text-[10px] text-gray-500 font-bold ml-1">目的地(客戶/外協加工廠)</label>
                                     <input id="newCustomerName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none text-sm border border-transparent focus:border-yellow-500 text-white" placeholder="請輸入名稱">
                                 </div>
-                                <div class="space-y-1"><label class="text-[10px] text-gray-500 font-bold ml-1">負責師傅</label>
+                                <div class="space-y-1"><label class="text-[10px] text-gray-500 font-bold ml-1">負責司機/師傅</label>
                                     <select id="newMasterName" class="w-full bg-neutral-800 p-4 rounded-xl outline-none text-sm border border-transparent focus:border-yellow-500 text-white">
                                         <option value="待安排">待安排</option>
                                         ${(masters || []).map(m => `<option value="${m}">${m}</option>`).join('')}
@@ -192,8 +198,14 @@
                                 </div>
                             </div>
                             <div class="bg-black/40 p-5 rounded-2xl mb-6 border border-neutral-800">
-                                <p class="text-[10px] text-gray-500 font-bold mb-3 uppercase tracking-widest">品項清單明細</p>
-                                ${items.map((item, idx) => `<div class="flex gap-2 mb-2"><input placeholder="品項名稱" class="flex-grow bg-neutral-800 p-3 rounded-xl text-sm text-white" onchange="window.updateItem(${idx},'name',this.value)" value="${item.name}"><input placeholder="數量" class="w-20 bg-neutral-800 p-3 rounded-xl text-sm text-center text-white" onchange="window.updateItem(${idx},'qty',this.value)" value="${item.qty}"></div>`).join('')}
+                                <p class="text-[10px] text-gray-500 font-bold mb-3 uppercase tracking-widest">品項載運明細</p>
+                                <div id="items-container">
+                                    ${items.map((item, idx) => `
+                                        <div class="flex gap-2 mb-2">
+                                            <input placeholder="品項/工件名稱" class="flex-grow bg-neutral-800 p-3 rounded-xl text-sm text-white" oninput="window.updateItem(${idx},'name',this.value)" value="${item.name}">
+                                            <input placeholder="數量" class="w-20 bg-neutral-800 p-3 rounded-xl text-sm text-center text-white" oninput="window.updateItem(${idx},'qty',this.value)" value="${item.qty}">
+                                        </div>`).join('')}
+                                </div>
                                 <button onclick="window.addItem()" class="w-full py-2 border border-dashed border-neutral-700 rounded-xl text-[10px] text-gray-500 hover:text-yellow-500 transition-all">+ 增加品項欄位</button>
                             </div>
                             <button onclick="window.handleCreate()" class="w-full bg-yellow-500 text-black font-black py-4 rounded-2xl shadow-lg shadow-yellow-500/10 hover:scale-[1.01] active:scale-[0.98] transition-all">確認並發布任務</button>
@@ -206,8 +218,11 @@
                                 const flow = FLOWS[o.type] || [];
                                 const currentIndex = flow.findIndex(f => f.label === o.status);
                                 const nextStep = flow[currentIndex + 1];
-                                const isFinished = currentIndex === flow.length - 1;
+                                const isFinished = currentIndex === flow.length - 1 || o.status === '任務結案';
+                                
+                                // 判斷當前登入者是否可以審核下一步
                                 const isMine = nextStep && (currentView === 'admin' || currentView === nextStep.role || nextStep.role === 'system');
+                                const roleLabel = nextStep ? (nextStep.role === 'purchase' ? '採購' : '廠務') : '';
 
                                 return `
                                 <div class="bg-neutral-900 p-6 rounded-[2rem] border ${isMine && !isFinished ? 'border-yellow-500/50 ring-2 ring-yellow-500/10' : 'border-neutral-800'} transition-all shadow-xl">
@@ -224,15 +239,20 @@
                                     <div class="text-sm text-gray-300 bg-black/40 p-4 rounded-2xl mb-6 border border-neutral-800/50">
                                         ${(o.items || []).map(i => `<div class="flex justify-between mb-1"><span>${i.name}</span><span class="font-black text-yellow-500">x${i.qty}</span></div>`).join('')}
                                     </div>
-                                    <div class="flex justify-end items-center gap-3 border-t border-neutral-800 pt-5">
-                                        ${!isFinished ? `
-                                            <button onclick="window.updateStatus('${o.id}', '${o.type}', '${o.status}')" 
-                                                class="px-8 py-3 rounded-2xl text-xs font-black transition-all shadow-xl
-                                                ${isMine ? 'bg-yellow-500 text-black hover:scale-105 active:scale-95' : 'bg-neutral-800 text-neutral-600 cursor-not-allowed opacity-50'}">
-                                                ${isMine ? '下一步：' + nextStep.label : '等待【' + (nextStep.role === 'purchase' ? '採購' : '廠務') + '】處理'}
-                                            </button>
-                                        ` : `<div class="text-emerald-500 text-sm font-black flex items-center gap-2 px-4 py-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20"><i data-lucide="check-circle" class="w-4 h-4"></i> 任務結案</div>`}
-                                        ${currentView === 'admin' ? `<button onclick="window.deleteOrder('${o.id}')" class="text-red-500/50 hover:text-red-500 transition-all p-2"><i data-lucide="trash-2" class="w-5 h-5"></i></button>` : ''}
+                                    <div class="flex justify-between items-center gap-3 border-t border-neutral-800 pt-5">
+                                        <div class="text-xs text-neutral-500">
+                                            單號: <span class="text-neutral-400 font-mono">${o.id}</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            ${!isFinished ? `
+                                                <button onclick="window.updateStatus('${o.id}', '${o.type}', '${o.status}')" 
+                                                    class="px-8 py-3 rounded-2xl text-xs font-black transition-all shadow-xl
+                                                    ${isMine ? 'bg-yellow-500 text-black hover:scale-105 active:scale-95' : 'bg-neutral-800 text-neutral-600 cursor-not-allowed opacity-50'}">
+                                                    ${isMine ? '進度推進：' + nextStep.label : '等待【' + roleLabel + '】處理'}
+                                                </button>
+                                            ` : `<div class="text-emerald-500 text-sm font-black flex items-center gap-2 px-4 py-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20"><i data-lucide="check-circle" class="w-4 h-4"></i> 任務結案</div>`}
+                                            ${currentView === 'admin' ? `<button onclick="window.deleteOrder('${o.id}')" class="text-red-500/50 hover:text-red-500 transition-all p-2"><i data-lucide="trash-2" class="w-5 h-5"></i></button>` : ''}
+                                        </div>
                                     </div>
                                 </div>`
                               }).join('')}
